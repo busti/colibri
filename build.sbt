@@ -1,5 +1,13 @@
 import Options._
+<<<<<<< HEAD
 
+||||||| merged common ancestors
+
+
+=======
+import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
+
+>>>>>>> wip
 inThisBuild(Seq(
   version := "0.1.0-SNAPSHOT",
 
@@ -56,7 +64,16 @@ lazy val jsSettings = Seq(
   }
 )
 
+lazy val types = crossProject(JSPlatform, JVMPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("types"))
+  .settings(commonSettings)
+  .settings(
+    name := "colibri-types",
+  )
+
 lazy val colibri = project
+  .dependsOn(types.js)
   .enablePlugins(ScalaJSPlugin)
   .in(file("colibri"))
   .settings(commonSettings, jsSettings)
@@ -77,4 +94,4 @@ lazy val root = project
 
     skip in publish := true,
   )
-  .aggregate(colibri)
+  .aggregate(colibri, types.js, types.jvm)
