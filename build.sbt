@@ -73,7 +73,7 @@ lazy val types = crossProject(JSPlatform, JVMPlatform)
   )
 
 lazy val colibri = project
-  .dependsOn(types.js)
+  //.dependsOn(types.js)
   .enablePlugins(ScalaJSPlugin)
   .in(file("colibri"))
   .settings(commonSettings, jsSettings)

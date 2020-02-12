@@ -1,7 +1,7 @@
 package colibri
 
 trait Source[-F[_]] {
-  def subscribe[G[_] : Sink, A](source: F[A])(sink: G[_ >: A]): Cancelable
+  def subscribe[G[_] : Sink, A, S: Subscription](source: F[A])(sink: G[_ >: A]): S
 }
 object Source {
   @inline def apply[F[_]](implicit source: Source[F]): Source[F] = source

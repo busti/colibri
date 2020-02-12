@@ -92,7 +92,7 @@ object Cancelable {
     @inline def cancel() = f()
   }
 
-  @inline def lift[T : CancelCancelable](subscription: T) = apply(() => CancelCancelable[T].cancel(subscription))
+  @inline def lift[T : Cancelation](subscription: T) = apply(() => Cancelation[T].cancel(subscription))
 
   @inline def composite(subscriptions: Cancelable*): Cancelable = compositeFromIterable(subscriptions)
   @inline def compositeFromIterable(subscriptions: Iterable[Cancelable]): Cancelable = new Cancelable {
@@ -110,7 +110,8 @@ object Cancelable {
     @inline def combine(a: Cancelable, b: Cancelable) = Cancelable.composite(a, b)
   }
 
-  implicit object cancelCancelable extends CancelCancelable[Cancelable] {
+  implicit object cancelation extends Cancelation[Cancelable] {
+    @inline def apply(onCancel: () => Unit): Cancelable = Cancelable(onCancel)
     @inline def cancel(subscription: Cancelable): Unit = subscription.cancel()
   }
 }
