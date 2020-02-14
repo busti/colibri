@@ -4,7 +4,7 @@ import cats.Monoid
 
 import scala.scalajs.js
 
-trait Cancelable {
+trait Cancelable extends types.Subscription {
   def cancel(): Unit
 }
 object Cancelable {
