@@ -129,7 +129,7 @@ object Cancelable {
 
   @inline def consecutive(): Consecutive = new Consecutive
 
-  @inline def refCount(subscription: () => Cancelable): RefCount = new RefCount(subscriptions)
+  @inline def refCount(subscription: () => Cancelable): RefCount = new RefCount(subscription)
 
   implicit object monoid extends Monoid[Cancelable] {
     @inline def empty = Cancelable.empty

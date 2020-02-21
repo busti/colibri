@@ -42,12 +42,6 @@ object Observable {
   type Hot[A] = Observable[A] with Cancelable
   trait Connectable[A] extends Observable[A] {
     def connect(): Cancelable
-
-    def hot(): Hot[A] = new Observable[A] with Cancelable {
-      private val connection = connect()
-      def cancel() = connection.cancel()
-      def subscribe[G[_]: Sink](sink: G[_ >: A]) = source.subscribe(sink)
-    }
   }
 
   // Only one execution context in javascript that is a queued execution
@@ -593,13 +587,13 @@ object Observable {
   }
 
   def hot[A](source: Connectable[A]): Hot[A] = new Observable[A] with Cancelable {
-    private val connection = connect()
+    private val connection = source.connect()
     def cancel() = connection.cancel()
     def subscribe[G[_]: Sink](sink: G[_ >: A]) = source.subscribe(sink)
   }
 
   @inline def sharePublishConnectable[F[_]: Source, A](source: F[A]): Connectable[A] = pipeThroughConnectable[F, A, Lambda[X => Subject[X, X]]](source)(Subject.publish[A])
-  @inline def shareReplayConnectable[F[_]: Source, A](source: F[A]): Connectable[A] = pipeThroughConnectable[F, A, Lambda[X => Subject[X, X]]](source)(Subject.behavior[A])
+  @inline def shareReplayConnectable[F[_]: Source, A](source: F[A]): Connectable[A] = pipeThroughConnectable[F, A, Lambda[X => Subject[X, X]]](source)(Subject.replay[A])
   @inline def shareBehaviorConnectable[F[_]: Source, A](source: F[A])(seed: A): Connectable[A] = pipeThroughConnectable[F, A, Lambda[X => Subject[X, X]]](source)(Subject.behavior[A](seed))
 
   def pipeThroughConnectable[F[_]: Source, A, S[_] : Source : Sink](source: F[A])(pipe: S[A]): Connectable[A] = new Connectable[A] {
@@ -792,7 +786,7 @@ object Observable {
     @inline def foreach(f: A => Unit): Cancelable = source.subscribe(Observer.create(f))
   }
 
-  @inline implicit class Operations[A](val source: Observable[A]) extends AnyVal {
+  @inline implicit class ConnectableOperations[A](val source: Connectable[A]) extends AnyVal {
     @inline def hot(): Hot[A] = Observable.hot(source)
   }
 

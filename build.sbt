@@ -70,6 +70,19 @@ lazy val colibri = project
     )
   )
 
+lazy val monix = project
+  .enablePlugins(ScalaJSPlugin)
+  .dependsOn(colibri)
+  .in(file("monix"))
+  .settings(commonSettings, jsSettings)
+  .settings(
+    name := "colibri-monix",
+
+    libraryDependencies ++= Seq(
+      "io.monix"      %%% "monix"       % "3.1.0",
+    )
+  )
+
 lazy val root = project
   .in(file("."))
   .settings(
@@ -77,4 +90,4 @@ lazy val root = project
 
     skip in publish := true,
   )
-  .aggregate(colibri)
+  .aggregate(colibri, monix)

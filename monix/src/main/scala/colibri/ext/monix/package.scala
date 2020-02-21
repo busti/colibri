@@ -1,71 +1,86 @@
 package colibri.ext
 
-import cats.Monoid
+import _root_.monix.eval.Coeval
+import _root_.monix.execution.{Ack, Scheduler, Cancelable}
+import _root_.monix.reactive.{OverflowStrategy, Observable, Observer}
+import _root_.monix.reactive.subjects.Var
 
-import _root_.monix.execution.{Ack, Cancelable}
-import _root_.monix.execution.cancelables.CompositeCancelable
-import _root_.monix.reactive.{Observable, Observer}
-import _root_.monix.reactive.subjects.PublishSubject
+import colibri.effect._
+import colibri._
 
-import scala.concurrent.Future
+package object monix {
 
-package object monix extends MonixReactive {
+  // Sink
 
-  implicit class RichObserver[I](val observer: Observer[I]) extends AnyVal {
-    def redirect[I2](f: Observable[I2] => Observable[I]): ConnectableObserver[I2] = {
-      val subject = PublishSubject[I2]
-      val transformed = f(subject)
-      new ConnectableObserver[I2](subject, implicit scheduler => transformed.subscribe(observer))
-    }
+  implicit object monixVariableSink extends Sink[Var] {
+    def onNext[A](sink: Var[A])(value: A): Unit = { sink := value; () }
 
-    @deprecated("Use contramap instead.", "")
-    @inline def redirectMap[I2](f: I2 => I): Observer[I2] = observer.contramap(f)
-
-    def redirectMapMaybe[I2](f: I2 => Option[I]): Observer[I2] = new Observer[I2] {
-      override def onNext(elem: I2): Future[Ack] = f(elem).fold[Future[Ack]](Ack.Continue)(observer.onNext(_))
-      override def onError(ex: Throwable): Unit = observer.onError(ex)
-      override def onComplete(): Unit = observer.onComplete()
-    }
-
-    def redirectCollect[I2](f: PartialFunction[I2, I]): Observer[I2] = redirectMapMaybe(f.lift)
-    def redirectFilter(f: I => Boolean): Observer[I] = redirectMapMaybe(e => Some(e).filter(f))
+    def onError[A](sink: Var[A])(error: Throwable): Unit = UnhandledErrorReporter.errorSubject.onNext(error)
   }
 
-  implicit class RichProHandler[I,O](val self: MonixProHandler[I,O]) extends AnyVal {
-    def mapObservable[O2](f: O => O2): MonixProHandler[I, O2] = MonixProHandler(self, self.map(f))
-    def mapObserver[I2](f: I2 => I): MonixProHandler[I2, O] = MonixProHandler(self.contramap(f), self)
-    def mapProHandler[I2, O2](write: I2 => I)(read: O => O2): MonixProHandler[I2, O2] = MonixProHandler(self.contramap(write), self.map(read))
-
-    def collectObservable[O2](f: PartialFunction[O, O2]): MonixProHandler[I, O2] = MonixProHandler(self, self.collect(f))
-    def collectObserver[I2](f: PartialFunction[I2, I]): MonixProHandler[I2, O] = MonixProHandler(self.redirectCollect(f), self)
-    def collectProHandler[I2, O2](write: PartialFunction[I2, I])(read: PartialFunction[O, O2]): MonixProHandler[I2, O2] = MonixProHandler(self.redirectCollect(write), self.collect(read))
-
-    def filterObservable(f: O => Boolean): MonixProHandler[I, O] = MonixProHandler(self, self.filter(f))
-    def filterObserver(f: I => Boolean): MonixProHandler[I, O] = MonixProHandler(self.redirectFilter(f), self)
-    def filterProHandler(write: I => Boolean)(read: O => Boolean): MonixProHandler[I, O] = MonixProHandler(self.redirectFilter(write), self.filter(read))
-
-    def transformObservable[O2](f: Observable[O] => Observable[O2]): MonixProHandler[I,O2] = MonixProHandler(self, f(self))
-    def transformObserver[I2](f: Observable[I2] => Observable[I]): MonixProHandler[I2,O] with ReactiveConnectable = MonixProHandler.connectable(self.redirect(f), self)
-    def transformProHandler[I2, O2](write: Observable[I2] => Observable[I])(read: Observable[O] => Observable[O2]): MonixProHandler[I2,O2] with ReactiveConnectable = MonixProHandler.connectable(self.redirect(write), read(self))
-  }
-
-  implicit class RichHandler[T](val self: MonixHandler[T]) extends AnyVal {
-    def lens[S](seed: T)(read: T => S)(write: (T, S) => T): MonixHandler[S] with ReactiveConnectable = {
-      val redirected = self
-        .redirect[S](_.withLatestFrom(self.startWith(Seq(seed))){ case (a, b) => write(b, a) })
-
-      MonixProHandler.connectable(redirected, self.map(read))
+  //TODO: unsafe because of backpressure and ignored ACK
+  implicit object monixObserverSink extends Sink[Observer] {
+    def onNext[A](sink: Observer[A])(value: A): Unit = {
+      sink.onNext(value)
+      ()
     }
 
-    def mapHandler[T2](write: T2 => T)(read: T => T2): MonixHandler[T2] = MonixProHandler(self.contramap(write), self.map(read))
-    def collectHandler[T2](write: PartialFunction[T2, T])(read: PartialFunction[T, T2]): MonixHandler[T2] = MonixProHandler(self.redirectCollect(write), self.collect(read))
-    def filterHandler(write: T => Boolean)(read: T => Boolean): MonixHandler[T] = MonixProHandler(self.redirectFilter(write), self.filter(read))
-    def transformHandler[T2](write: Observable[T2] => Observable[T])(read: Observable[T] => Observable[T2]): MonixHandler[T2] with ReactiveConnectable = MonixProHandler.connectable(self.redirect(write), read(self))
+    def onError[A](sink: Observer[A])(error: Throwable): Unit = {
+      sink.onError(error)
+      ()
+    }
   }
 
-  //TODO: add to monix?
-  implicit object CancelableMonoid extends Monoid[Cancelable] {
-    def empty: Cancelable = Cancelable.empty
-    def combine(x: Cancelable, y: Cancelable): Cancelable = CompositeCancelable(x, y)
+  implicit object monixObserverLiftSink extends LiftSink[Observer.Sync] {
+    def lift[G[_] : Sink, A](sink: G[A]): Observer.Sync[A] = new Observer.Sync[A] {
+      def onNext(value: A): Ack = { Sink[G].onNext(sink)(value); Ack.Continue }
+      def onError(error: Throwable): Unit = Sink[G].onError(sink)(error)
+      def onComplete(): Unit = ()
+    }
+  }
+
+  // Source
+
+  implicit def monixObservableSource(implicit scheduler: Scheduler): Source[Observable] = new Source[Observable] {
+    def subscribe[G[_] : Sink, A](source: Observable[A])(sink: G[_ >: A]): colibri.Cancelable = {
+      val sub = source.subscribe(
+        { v => Sink[G].onNext(sink)(v); Ack.Continue },
+        Sink[G].onError(sink)
+      )
+      colibri.Cancelable(sub.cancel)
+    }
+  }
+
+  implicit object monixObservableLiftSource extends LiftSource[Observable] {
+    def lift[G[_] : Source, A](source: G[A]): Observable[A] = Observable.create[A](OverflowStrategy.Unbounded) { observer =>
+      val sub = Source[G].subscribe(source)(observer)
+      Cancelable(() => sub.cancel())
+    }
+  }
+
+  // Cancelable
+  implicit object monixCancelCancelable extends CancelCancelable[Cancelable] {
+    def cancel(subscription: Cancelable): Unit = subscription.cancel()
+  }
+
+  // Subject
+  type MonixProSubject[-I, +O] = Observable[O] with Observer[I]
+  type MonixSubject[T] = MonixProSubject[T,T]
+
+  implicit object monixCreateSubject extends CreateSubject[MonixSubject] {
+    def replay[A]: MonixSubject[A] = MonixSubject.replay[A]
+    def behavior[A](seed: A): MonixSubject[A] = MonixSubject.behavior[A](seed)
+    def publish[A]: MonixSubject[A] = MonixSubject.publish[A]
+  }
+
+  implicit object monixCreateProSubject extends CreateProSubject[MonixProSubject] {
+    def replay[I,O](f: I => O): MonixProSubject[I,O] = MonixProSubject.replay(f)
+    def behavior[I,O](seed: I)(f: I => O): MonixProSubject[I,O] = MonixProSubject.behavior(seed)(f)
+    def publish[I,O](f: I => O): MonixProSubject[I,O] = MonixProSubject.publish(f)
+    @inline def from[SI[_] : Sink, SO[_] : Source, I,O](sink: SI[I], source: SO[O]): MonixProSubject[I, O] = MonixProSubject(LiftSink[Observer].lift(sink), LiftSource[Observable].lift(source))
+  }
+
+  implicit object coeval extends RunSyncEffect[Coeval] {
+    @inline def unsafeRun[T](effect: Coeval[T]): T = effect.apply()
   }
 }
