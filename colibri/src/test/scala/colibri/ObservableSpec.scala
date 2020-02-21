@@ -124,11 +124,11 @@ class ObservableSpec extends AnyFlatSpec with Matchers {
     received shouldBe List(2,1,0)
   }
 
-  it should "share" in {
+  it should "sharePublish" in {
     var mapped = List.empty[Int]
     var received = List.empty[Int]
     val handler = Subject.behavior[Int]
-    val stream = Observable.merge(handler, Observable.fromIterable(Seq(1,2,3))).map { x => mapped ::= x; x }.share
+    val stream = Observable.merge(handler, Observable.fromIterable(Seq(1,2,3))).map { x => mapped ::= x; x }.sharePublish
 
     mapped shouldBe List.empty
 
@@ -162,12 +162,12 @@ class ObservableSpec extends AnyFlatSpec with Matchers {
     received shouldBe List(5,4,4,3,2,1)
   }
 
-  it should "shareWithLatest" in {
+  it should "shareReplay" in {
     var mapped = List.empty[Int]
     var received = List.empty[Int]
     var errors = 0
     val handler = Subject.behavior[Int]
-    val stream = Observable.merge(handler, Observable.fromIterable(Seq(1,2,3))).map { x => mapped ::= x; x }.shareWithLatest
+    val stream = Observable.merge(handler, Observable.fromIterable(Seq(1,2,3))).map { x => mapped ::= x; x }.shareReplay
 
     mapped shouldBe List.empty
 

@@ -63,20 +63,21 @@ trait MonixReactive {
     def cancel(subscription: Cancelable): Unit = subscription.cancel()
   }
 
-  // Handler
-  type MonixProHandler[-I, +O] = Observable[O] with Observer[I]
-  type MonixHandler[T] = MonixProHandler[T,T]
+  // Subject
+  type MonixProSubject[-I, +O] = Observable[O] with Observer[I]
+  type MonixSubject[T] = MonixProSubject[T,T]
 
-  implicit object monixCreateHandler extends CreateHandler[MonixHandler] {
-    def behavior[A]: MonixHandler[A] = MonixHandler.create[A]
-    def behavior[A](seed: A): MonixHandler[A] = MonixHandler.create[A](seed)
-    def publish[A]: MonixHandler[A] = MonixHandler.publish[A]
+  implicit object monixCreateSubject extends CreateSubject[MonixHandler] {
+    def replay[A]: MonixHandler[A] = MonixSubject.create[A]
+    def behavior[A](seed: A): MonixSubject[A] = MonixSubject.create[A](seed)
+    def publish[A]: MonixSubject[A] = MonixSubject.publish[A]
   }
 
-  implicit object monixCreateProHandler extends CreateProHandler[MonixProHandler] {
-    def apply[I,O](f: I => O): MonixProHandler[I,O] = MonixProHandler.create(f)
-    def apply[I,O](seed: I)(f: I => O): MonixProHandler[I,O] = MonixProHandler.create(seed)(f)
-    @inline def from[SI[_] : Sink, SO[_] : Source, I,O](sink: SI[I], source: SO[O]): MonixProHandler[I, O] = MonixProHandler(LiftSink[Observer].lift(sink), LiftSource[Observable].lift(source))
+  implicit object monixCreateProSubject extends CreateProSubject[MonixProSubject] {
+    def replay[I,O](f: I => O): MonixProSubject[I,O] = MonixProSubject.replay(f)
+    def behavior[I,O](seed: I)(f: I => O): MonixProSubject[I,O] = MonixProSubject.behavior(seed)(f)
+    def publish[I,O](f: I => O): MonixProSubject[I,O] = MonixProSubject.publish(f)
+    @inline def from[SI[_] : Sink, SO[_] : Source, I,O](sink: SI[I], source: SO[O]): MonixProSubject[I, O] = MonixProSubject(LiftSink[Observer].lift(sink), LiftSource[Observable].lift(source))
   }
 
   val handler = HandlerEnvironment[Observer, Observable, MonixHandler, MonixProHandler]

@@ -31,7 +31,7 @@ object Observer {
     }
   }
 
-  @inline def createUnhandled[A](consume: A => Unit, failure: Throwable => Unit = UnhandledErrorReporter.errorSubject.onNext): Observer[A] = new Observer[A] {
+  def unsafeCreate[A](consume: A => Unit, failure: Throwable => Unit = UnhandledErrorReporter.errorSubject.onNext): Observer[A] = new Observer[A] {
     def onNext(value: A): Unit = consume(value)
     def onError(error: Throwable): Unit = failure(error)
   }

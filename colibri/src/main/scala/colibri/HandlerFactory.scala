@@ -2,7 +2,7 @@ package colibri
 
 import cats.effect.{Sync, SyncIO}
 
-@inline final class HandlerFactory[H[_] : CreateHandler] {
+@inline final class HandlerFactory[H[_] : CreateSubject] {
   // Create a Handler that keeps the last emitted value as State, typically a BehaviourSubject or ReplaySubject
 
   @inline def create[T]: SyncIO[H[T]] = SyncIO(unsafe[T])
@@ -28,7 +28,7 @@ import cats.effect.{Sync, SyncIO}
   }
 }
 
-@inline final class ProHandlerFactory[H[_,_] : CreateProHandler] {
+@inline final class ProHandlerFactory[H[_,_] : CreateProSubject] {
   // Create a ProHandler that has different type parameters for the Observer[I] part and the Observable[O] part
 
   @inline def create[I,O](f: I => O): SyncIO[H[I,O]] = SyncIO(unsafe[I, O](f))

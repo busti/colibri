@@ -39,6 +39,9 @@ object Observable {
     @inline def mapFilter[A, B](fa: Observable[A])(f: A => Option[B]): Observable[B] = Observable.mapFilter(fa)(f)
   }
 
+  trait Connectable[A] extends Observable[A] {
+    def connect(): Cancelable
+  }
 
   // Only one execution context in javascript that is a queued execution
   // context using the javascript event loop. We skip the implicit execution
@@ -120,7 +123,7 @@ object Observable {
 
   def failed[S[_]: Source, A](source: S[A]): Observable[Throwable] = new Observable[Throwable] {
     def subscribe[G[_]: Sink](sink: G[_ >: Throwable]): Cancelable =
-      Source[S].subscribe(source)(Observer.createUnhandled[A](_ => (), Sink[G].onError(sink)(_)))
+      Source[S].subscribe(source)(Observer.unsafeCreate[A](_ => (), Sink[G].onError(sink)(_)))
   }
 
   @inline def interval(delay: FiniteDuration): Observable[Long] = intervalMillis(delay.toMillis.toInt)
@@ -246,7 +249,7 @@ object Observable {
   }
 
   def mapTry[F[_]: Source, A, B](source: F[A])(f: A => Try[B]): Observable[B] = new Observable[B] {
-    def subscribe[G[_]: Sink](sink: G[_ >: B]): Cancelable = Source[F].subscribe(source)(Observer.createUnhandled[A](
+    def subscribe[G[_]: Sink](sink: G[_ >: B]): Cancelable = Source[F].subscribe(source)(Observer.unsafeCreate[A](
       value => f(value) match {
         case Success(b) => Sink[G].onNext(sink)(b)
         case Failure(error) => Sink[G].onError(sink)(error)
@@ -347,6 +350,41 @@ object Observable {
 
   @inline def mapSync[S[_]: Source, F[_]: RunSyncEffect, A, B](source: S[A])(f: A => F[B]): Observable[B] = map(source)(v => RunSyncEffect[F].unsafeRun(f(v)))
 
+  @inline def zip[SA[_]: Source, SB[_]: Source, A, B](sourceA: SA[A])(sourceB: SB[B]): Observable[(A,B)] = zipMap(sourceA)(sourceB)(_ -> _)
+
+  def zipMap[SA[_]: Source, SB[_]: Source, A, B, R](sourceA: SA[A])(sourceB: SB[B])(f: (A, B) => R): Observable[R] = new Observable[R] {
+    def subscribe[G[_]: Sink](sink: G[_ >: R]): Cancelable = {
+      var latestA: Option[A] = None
+      var latestB: Option[B] = None
+
+      def send(): Unit = for {
+        a <- latestA
+        b <- latestB
+      } {
+        latestA = None
+        latestB = None
+        Sink[G].onNext(sink)(f(a,b))
+      }
+
+      Cancelable.composite(
+        Source[SA].subscribe(sourceA)(Observer.create[A](
+          { value =>
+            latestA = Some(value)
+            send()
+          },
+          Sink[G].onError(sink),
+        )),
+        Source[SB].subscribe(sourceB)(Observer.create[B](
+          { value =>
+            latestB = Some(value)
+            send()
+          },
+          Sink[G].onError(sink),
+        ))
+      )
+    }
+  }
+
   @inline def combineLatest[SA[_]: Source, SB[_]: Source, A, B](sourceA: SA[A])(sourceB: SB[B]): Observable[(A,B)] = combineLatestMap(sourceA)(sourceB)(_ -> _)
 
   def combineLatestMap[SA[_]: Source, SB[_]: Source, A, B, R](sourceA: SA[A])(sourceB: SB[B])(f: (A, B) => R): Observable[R] = new Observable[R] {
@@ -378,7 +416,9 @@ object Observable {
     }
   }
 
-  def withLatestFrom[SA[_]: Source, SB[_]: Source, A, B, R](source: SA[A])(latest: SB[B])(f: (A, B) => R): Observable[R] = new Observable[R] {
+  @inline def withLatest[SA[_]: Source, SB[_]: Source, A, B](source: SA[A])(latest: SB[B]): Observable[(A,B)] = withLatestMap(source)(latest)(_ -> _)
+
+  def withLatestMap[SA[_]: Source, SB[_]: Source, A, B, R](source: SA[A])(latest: SB[B])(f: (A, B) => R): Observable[R] = new Observable[R] {
     def subscribe[G[_]: Sink](sink: G[_ >: R]): Cancelable = {
       var latestValue: Option[B] = None
 
@@ -387,7 +427,7 @@ object Observable {
           value => latestValue.foreach(latestValue => Sink[G].onNext(sink)(f(value, latestValue))),
           Sink[G].onError(sink),
         )),
-        Source[SB].subscribe(latest)(Observer.createUnhandled[B](
+        Source[SB].subscribe(latest)(Observer.unsafeCreate[B](
           value => latestValue = Some(value),
           Sink[G].onError(sink),
         ))
@@ -399,7 +439,7 @@ object Observable {
     def subscribe[G[_]: Sink](sink: G[_ >: (A, Int)]): Cancelable = {
       var counter = 0
 
-      Source[S].subscribe(source)(Observer.createUnhandled[A](
+      Source[S].subscribe(source)(Observer.unsafeCreate[A](
         { value =>
           val index = counter
           counter += 1
@@ -459,7 +499,7 @@ object Observable {
           isCancel = true
           dom.window.clearInterval(intervalId)
         },
-        Source[S].subscribe(source)(Observer.createUnhandled[A](
+        Source[S].subscribe(source)(Observer.unsafeCreate[A](
           value => lastValue = Some(value),
           Sink[G].onError(sink),
         ))
@@ -502,7 +542,7 @@ object Observable {
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = {
       var lastValue: Option[A] = None
 
-      Source[S].subscribe(source)(Observer.createUnhandled[A](
+      Source[S].subscribe(source)(Observer.unsafeCreate[A](
         { value =>
             val shouldSend = lastValue.forall(lastValue => !Eq[A].eqv(lastValue, value))
             if (shouldSend) {
@@ -517,23 +557,23 @@ object Observable {
 
   @inline def distinctOnEquals[S[_]: Source, A](source: S[A]): Observable[A] = distinct(source)(Source[S], Eq.fromUniversalEquals)
 
-  def withDefaultCancelable[S[_]: Source, F[_]: Sink, A](source: S[A])(sink: F[A]): Observable[A] = new Observable[A] {
-    private var defaultCancelable = Source[S].subscribe(source)(sink)
+  def withDefaultSubscription[S[_]: Source, F[_]: Sink, A](source: S[A])(sink: F[A]): Observable[A] = new Observable[A] {
+    private var defaultSubscription = Source[S].subscribe(source)(sink)
 
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = {
       // stop the default subscription.
-      if (defaultCancelable != null) {
-        defaultCancelable.cancel()
-        defaultCancelable = null
+      if (defaultSubscription != null) {
+        defaultSubscription.cancel()
+        defaultSubscription = null
       }
 
       Source[S].subscribe(source)(sink)
     }
   }
 
-  @inline def share[F[_]: Source, A](source: F[A]): Observable[A] = pipeThrough[F, A, Lambda[X => Subject[X, X]]](source)(Subject.publish[A])
-  @inline def shareWithLatest[F[_]: Source, A](source: F[A]): Observable[A] = pipeThrough[F, A, Lambda[X => Subject[X, X]]](source)(Subject.behavior[A])
-  @inline def shareWithLatestAndSeed[F[_]: Source, A](source: F[A])(seed: A): Observable[A] = pipeThrough[F, A, Lambda[X => Subject[X, X]]](source)(Subject.behavior[A](seed))
+  @inline def sharePublish[F[_]: Source, A](source: F[A]): Observable[A] = pipeThrough[F, A, Lambda[X => Subject[X, X]]](source)(Subject.publish[A])
+  @inline def shareReplay[F[_]: Source, A](source: F[A]): Observable[A] = pipeThrough[F, A, Lambda[X => Subject[X, X]]](source)(Subject.replay[A])
+  @inline def shareBehavior[F[_]: Source, A](source: F[A])(seed: A): Observable[A] = pipeThrough[F, A, Lambda[X => Subject[X, X]]](source)(Subject.behavior[A](seed))
 
   def pipeThrough[F[_]: Source, A, S[_] : Source : Sink](source: F[A])(pipe: S[A]): Observable[A] = new Observable[A] {
     private var subscribers = 0
@@ -558,6 +598,26 @@ object Observable {
         }
       }
     }
+  }
+
+  @inline def sharePublishConnectable[F[_]: Source, A](source: F[A]): Connectable[A] = pipeThroughConnectable[F, A, Lambda[X => Subject[X, X]]](source)(Subject.publish[A])
+  @inline def shareReplayConnectable[F[_]: Source, A](source: F[A]): Connectable[A] = pipeThroughConnectable[F, A, Lambda[X => Subject[X, X]]](source)(Subject.behavior[A])
+  @inline def shareBehaviorConnectable[F[_]: Source, A](source: F[A])(seed: A): Connectable[A] = pipeThroughConnectable[F, A, Lambda[X => Subject[X, X]]](source)(Subject.behavior[A](seed))
+
+  def pipeThroughConnectable[F[_]: Source, A, S[_] : Source : Sink](source: F[A])(pipe: S[A]): Connectable[A] = new Connectable[A] {
+    private var currentCancelable: Cancelable = null
+
+    def connect(): Cancelable = {
+      if (currentCancelable == null) {
+        val variable = Cancelable.variable()
+        currentCancelable = variable
+        variable() = Source[F].subscribe(source)(pipe)
+      }
+      currentCancelable
+    }
+
+    def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable =
+      Source[S].subscribe(pipe)(sink)
   }
 
   @inline def prependSync[S[_]: Source, A, F[_] : RunSyncEffect](source: S[A])(value: F[A]): Observable[A] = concatSync[F, A, S](value, source)
@@ -624,7 +684,7 @@ object Observable {
       var finishedTake = false
       val subscription = Cancelable.builder()
 
-      subscription += Source[FU].subscribe(until)(Observer.createUnhandled[Unit](
+      subscription += Source[FU].subscribe(until)(Observer.unsafeCreate[Unit](
         { _ =>
           finishedTake = true
           subscription.cancel()
@@ -672,7 +732,7 @@ object Observable {
       var finishedDrop = false
 
       val untilCancelable = Cancelable.variable()
-      untilCancelable() = Source[FU].subscribe(until)(Observer.createUnhandled[Unit](
+      untilCancelable() = Source[FU].subscribe(until)(Observer.unsafeCreate[Unit](
         { _ =>
           finishedDrop = true
           untilCancelable.cancel()
@@ -693,7 +753,10 @@ object Observable {
     @inline def switchMap[S[_]: Source, B](f: A => S[B]): Observable[B] = Observable.switchMap(source)(f)
     @inline def combineLatest[S[_]: Source, B, R](combined: S[B]): Observable[(A,B)] = Observable.combineLatest(source)(combined)
     @inline def combineLatestMap[S[_]: Source, B, R](combined: S[B])(f: (A, B) => R): Observable[R] = Observable.combineLatestMap(source)(combined)(f)
-    @inline def withLatestFrom[S[_]: Source, B, R](latest: S[B])(f: (A, B) => R): Observable[R] = Observable.withLatestFrom(source)(latest)(f)
+    @inline def withLatest[S[_]: Source, B, R](latest: S[B]): Observable[(A,B)] = Observable.withLatest(source)(latest)
+    @inline def withLatestMap[S[_]: Source, B, R](latest: S[B])(f: (A, B) => R): Observable[R] = Observable.withLatestMap(source)(latest)(f)
+    @inline def zip[S[_]: Source, B, R](zipped: S[B]): Observable[(A,B)] = Observable.zip(source)(zipped)
+    @inline def zipMap[S[_]: Source, B, R](zipped: S[B])(f: (A, B) => R): Observable[R] = Observable.zipMap(source)(zipped)(f)
     @inline def zipWithIndex: Observable[(A, Int)] = Observable.zipWithIndex(source)
     @inline def debounce(duration: FiniteDuration): Observable[A] = Observable.debounce(source)(duration)
     @inline def debounceMillis(millis: Int): Observable[A] = Observable.debounceMillis(source)(millis)
@@ -715,9 +778,12 @@ object Observable {
     @inline def scan[B](seed: B)(f: (B, A) => B): Observable[B] = Observable.scan(source)(seed)(f)
     @inline def recover(f: PartialFunction[Throwable, A]): Observable[A] = Observable.recover(source)(f)
     @inline def recoverOption(f: PartialFunction[Throwable, Option[A]]): Observable[A] = Observable.recoverOption(source)(f)
-    @inline def share: Observable[A] = Observable.share(source)
-    @inline def shareWithLatest: Observable[A] = Observable.shareWithLatest(source)
-    @inline def shareWithLatestAndSeed(seed: A): Observable[A] = Observable.shareWithLatestAndSeed(source)(seed)
+    @inline def sharePublish: Observable[A] = Observable.sharePublish(source)
+    @inline def shareReplay: Observable[A] = Observable.shareReplay(source)
+    @inline def shareBehavior(seed: A): Observable[A] = Observable.shareBehavior(source)(seed)
+    @inline def sharePublishConnectable: Observable[A] = Observable.sharePublishConnectable(source)
+    @inline def shareReplayConnectable: Observable[A] = Observable.shareReplayConnectable(source)
+    @inline def shareBehaviorConnectable(seed: A): Observable[A] = Observable.shareBehaviorConnectable(source)(seed)
     @inline def prepend(value: A): Observable[A] = Observable.prepend(source)(value)
     @inline def prependSync[F[_] : RunSyncEffect](value: F[A]): Observable[A] = Observable.prependSync(source)(value)
     @inline def prependAsync[F[_] : Effect](value: F[A]): Observable[A] = Observable.prependAsync(source)(value)
@@ -730,7 +796,7 @@ object Observable {
     @inline def drop(num: Int): Observable[A] = Observable.drop(source)(num)
     @inline def dropWhile(predicate: A => Boolean): Observable[A] = Observable.dropWhile(source)(predicate)
     @inline def dropUntil[F[_]: Source](until: F[Unit]): Observable[A] = Observable.dropUntil(source)(until)
-    @inline def withDefaultCancelable[G[_] : Sink](sink: G[A]): Observable[A] = Observable.withDefaultCancelable(source)(sink)
+    @inline def withDefaultSubscription[G[_] : Sink](sink: G[A]): Observable[A] = Observable.withDefaultSubscription(source)(sink)
     @inline def subscribe(): Cancelable = source.subscribe(Observer.empty)
     @inline def foreach(f: A => Unit): Cancelable = source.subscribe(Observer.create(f))
   }

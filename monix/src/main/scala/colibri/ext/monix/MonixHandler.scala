@@ -8,14 +8,15 @@ import _root_.monix.reactive.subjects.{ReplaySubject, BehaviorSubject, PublishSu
 import scala.concurrent.Future
 
 object MonixHandler {
-  def create[T]: MonixHandler[T] = ReplaySubject.createLimited(1)
-  def create[T](seed:T): MonixHandler[T] = BehaviorSubject[T](seed)
-  def publish[T]: MonixHandler[T] = PublishSubject[T]
+  def replay[T]: ReplaySubject[T,T] = ReplaySubject.createLimited(1)
+  def behavior[T](seed:T): BehaviorSubject[T,T] = BehaviorSubject[T](seed)
+  def publish[T]: PublishSubject[T,T] = PublishSubject[T]
 }
 
 object MonixProHandler {
-  def create[I,O](f: I => O): MonixProHandler[I,O] = MonixHandler.create[I].mapObservable[O](f)
-  def create[I,O](seed: I)(f: I => O): MonixProHandler[I,O] = MonixHandler.create[I](seed).mapObservable[O](f)
+  def replay[I,O](f: I => O): ReplaySubject[I,O] = MonixHandler.replay[I].mapObservable[O](f)
+  def behavior[I,O](seed: I)(f: I => O): BehaviorSubject[I,O] = MonixHandler.behavior[I](seed).mapObservable[O](f)
+  def publish[I,O](f: I => O): PublishSubject[I,O] = MonixHandler.publish[I].mapObservable[O](f)
 
   def apply[I,O](observer: Observer[I], observable: Observable[O]): MonixProHandler[I,O] = new Observable[O] with Observer[I] {
     override def onNext(elem: I): Future[Ack] = observer.onNext(elem)
