@@ -82,6 +82,26 @@ object Cancelable {
     }
   }
 
+  class RefCount(subscription: () => Cancelable) {
+    private var counter = 0
+    private var currentCancelable: Cancelable = null
+
+    def ref(): Cancelable = {
+      counter += 1
+      if (counter == 1) {
+        currentCancelable = subscription()
+      }
+
+      Cancelable({ () =>
+        counter -= 1
+        if (counter == 0) {
+          currentCancelable.cancel()
+          currentCancelable = null
+        }
+      })
+    }
+  }
+
   object Empty extends Cancelable {
     @inline def cancel(): Unit = ()
   }
@@ -89,7 +109,11 @@ object Cancelable {
   @inline def empty = Empty
 
   @inline def apply(f: () => Unit) = new Cancelable {
-    @inline def cancel() = f()
+    private var isCanceled = false
+    @inline def cancel() = if (!isCanceled) {
+      isCanceled = true
+      f()
+    }
   }
 
   @inline def lift[T : CancelCancelable](subscription: T) = apply(() => CancelCancelable[T].cancel(subscription))
@@ -104,6 +128,8 @@ object Cancelable {
   @inline def variable(): Variable = new Variable
 
   @inline def consecutive(): Consecutive = new Consecutive
+
+  @inline def refCount(subscription: () => Cancelable): RefCount = new RefCount(subscriptions)
 
   implicit object monoid extends Monoid[Cancelable] {
     @inline def empty = Cancelable.empty
