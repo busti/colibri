@@ -82,11 +82,11 @@ object Cancelable {
     }
   }
 
-  class RefCount(subscription: () => Cancelable) {
+  class RefCount(subscription: () => Cancelable) extends Cancelable {
     private var counter = 0
     private var currentCancelable: Cancelable = null
 
-    def ref(): Cancelable = {
+    def ref(): Cancelable = if (counter == -1) Cancelable.empty else {
       counter += 1
       if (counter == 1) {
         currentCancelable = subscription()
@@ -99,6 +99,14 @@ object Cancelable {
           currentCancelable = null
         }
       })
+    }
+
+    def cancel(): Unit = {
+      counter = -1
+      if (currentCancelable != null) {
+        currentCancelable.cancel()
+        currentCancelable = null
+      }
     }
   }
 

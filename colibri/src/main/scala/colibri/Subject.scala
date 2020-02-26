@@ -2,20 +2,19 @@ package colibri
 
 import scala.scalajs.js
 
-class ReplaySubject[I, O](convert: I => O) extends Observer[I] with Observable[O] {
+class ReplaySubject[A] extends Observer[A] with Observable.MaybeValue[A] {
 
-  private var subscribers = new js.Array[Observer[O]]
+  private var subscribers = new js.Array[Observer[A]]
   private var isRunning = false
 
-  private var current: Option[O] = None
+  private var current: Option[A] = None
 
-  @inline def now(): Option[O] = current
+  @inline def now(): Option[A] = current
 
-  def onNext(value: I): Unit = {
+  def onNext(value: A): Unit = {
     isRunning = true
-    val converted = convert(value)
-    current = Some(converted)
-    subscribers.foreach(_.onNext(converted))
+    current = Some(value)
+    subscribers.foreach(_.onNext(value))
     isRunning = false
   }
 
@@ -25,7 +24,7 @@ class ReplaySubject[I, O](convert: I => O) extends Observer[I] with Observable[O
     isRunning = false
   }
 
-  def subscribe[G[_] : Sink](sink: G[_ >: O]): Cancelable = {
+  def subscribe[G[_] : Sink](sink: G[_ >: A]): Cancelable = {
     val observer = Observer.lift(sink)
     subscribers.push(observer)
     current.foreach(observer.onNext)
@@ -36,18 +35,17 @@ class ReplaySubject[I, O](convert: I => O) extends Observer[I] with Observable[O
   }
 }
 
-class BehaviorSubject[I, O](private var current: O, convert: I => O) extends Observer[I] with Observable[O] {
+class BehaviorSubject[A](private var current: A) extends Observer[A] with Observable.Value[A] {
 
-  private var subscribers = new js.Array[Observer[O]]
+  private var subscribers = new js.Array[Observer[A]]
   private var isRunning = false
 
-  @inline def now(): O = current
+  @inline def now(): A = current
 
-  def onNext(value: I): Unit = {
+  def onNext(value: A): Unit = {
     isRunning = true
-    val converted = convert(value)
-    current = converted
-    subscribers.foreach(_.onNext(converted))
+    current = value
+    subscribers.foreach(_.onNext(value))
     isRunning = false
   }
 
@@ -57,7 +55,7 @@ class BehaviorSubject[I, O](private var current: O, convert: I => O) extends Obs
     isRunning = false
   }
 
-  def subscribe[G[_] : Sink](sink: G[_ >: O]): Cancelable = {
+  def subscribe[G[_] : Sink](sink: G[_ >: A]): Cancelable = {
     val observer = Observer.lift(sink)
     subscribers.push(observer)
     observer.onNext(current)
@@ -68,15 +66,14 @@ class BehaviorSubject[I, O](private var current: O, convert: I => O) extends Obs
   }
 }
 
-class PublishSubject[I, O](convert: I => O) extends Observer[I] with Observable[O] {
+class PublishSubject[A] extends Observer[A] with Observable[A] {
 
-  private var subscribers = new js.Array[Observer[O]]
+  private var subscribers = new js.Array[Observer[A]]
   private var isRunning = false
 
-  def onNext(value: I): Unit = {
+  def onNext(value: A): Unit = {
     isRunning = true
-    val converted = convert(value)
-    subscribers.foreach(_.onNext(converted))
+    subscribers.foreach(_.onNext(value))
     isRunning = false
   }
 
@@ -86,7 +83,7 @@ class PublishSubject[I, O](convert: I => O) extends Observer[I] with Observable[
     isRunning = false
   }
 
-  def subscribe[G[_] : Sink](sink: G[_ >: O]): Cancelable = {
+  def subscribe[G[_] : Sink](sink: G[_ >: A]): Cancelable = {
     val observer = Observer.lift(sink)
     subscribers.push(observer)
     Cancelable { () =>
@@ -106,23 +103,11 @@ class PublishSubject[I, O](convert: I => O) extends Observer[I] with Observable[
 }
 
 object Subject {
-  object replay {
-    def apply[O]: ReplaySubject[O,O] = new ReplaySubject[O, O](identity)
+  def replay[O]: ReplaySubject[O] = new ReplaySubject[O]
 
-    def map[I, O](convert: I => O): ReplaySubject[I, O] = new ReplaySubject[I, O](convert)
-  }
+  def behavior[O](seed: O): BehaviorSubject[O] = new BehaviorSubject[O](seed)
 
-  object behavior {
-    def apply[O](seed: O): BehaviorSubject[O,O] = new BehaviorSubject[O, O](seed, identity)
-
-    def map[I, O](seed: I)(convert: I => O): BehaviorSubject[I, O] = new BehaviorSubject[I, O](convert(seed), convert)
-  }
-
-  object publish {
-    def apply[O]: PublishSubject[O,O] = new PublishSubject[O, O](identity)
-
-    def map[I, O](convert: I => O): PublishSubject[I, O] = new PublishSubject[I, O](convert)
-  }
+  def publish[O]: PublishSubject[O] = new PublishSubject[O]
 
   @inline def from[SI[_] : Sink, SO[_] : Source, I, O](sink: SI[I], source: SO[O]): Subject[I, O] = new CombinationSubject[SI, SO, I, O](sink, source)
 
@@ -138,9 +123,6 @@ object Subject {
     @inline def behavior[A](seed: A): Subject[A,A] = Subject.behavior[A](seed)
   }
   object createProSubject extends CreateProSubject[Subject] {
-    @inline def publish[I,O](f: I => O): Subject[I,O] = Subject.publish.map(f)
-    @inline def replay[I,O](f: I => O): Subject[I,O] = Subject.replay.map(f)
-    @inline def behavior[I,O](seed: I)(f: I => O): Subject[I,O] = Subject.behavior.map(seed)(f)
     @inline def from[SI[_] : Sink, SO[_] : Source, I,O](sink: SI[I], source: SO[O]): Subject[I, O] = Subject.from(sink, source)
   }
 }
