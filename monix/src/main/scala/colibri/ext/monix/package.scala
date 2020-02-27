@@ -73,13 +73,6 @@ package object monix {
     def publish[A]: MonixSubject[A] = MonixSubject.publish[A]
   }
 
-  implicit object monixCreateProSubject extends CreateProSubject[MonixProSubject] {
-    def replay[I,O](f: I => O): MonixProSubject[I,O] = MonixProSubject.replay(f)
-    def behavior[I,O](seed: I)(f: I => O): MonixProSubject[I,O] = MonixProSubject.behavior(seed)(f)
-    def publish[I,O](f: I => O): MonixProSubject[I,O] = MonixProSubject.publish(f)
-    @inline def from[SI[_] : Sink, SO[_] : Source, I,O](sink: SI[I], source: SO[O]): MonixProSubject[I, O] = MonixProSubject(LiftSink[Observer].lift(sink), LiftSource[Observable].lift(source))
-  }
-
   implicit object coeval extends RunSyncEffect[Coeval] {
     @inline def unsafeRun[T](effect: Coeval[T]): T = effect.apply()
   }

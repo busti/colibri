@@ -14,11 +14,7 @@ object MonixSubject {
 }
 
 object MonixProSubject {
-  def replay[I,O](f: I => O): MonixProSubject[I,O] = MonixSubject.replay[I].mapObservable[O](f)
-  def behavior[I,O](seed: I)(f: I => O): MonixProSubject[I,O] = MonixSubject.behavior[I](seed).mapObservable[O](f)
-  def publish[I,O](f: I => O): MonixProSubject[I,O] = MonixSubject.publish[I].mapObservable[O](f)
-
-  def apply[I,O](observer: Observer[I], observable: Observable[O]): MonixProSubject[I,O] = new Observable[O] with Observer[I] {
+  def from[I,O](observer: Observer[I], observable: Observable[O]): MonixProSubject[I,O] = new Observable[O] with Observer[I] {
     override def onNext(elem: I): Future[Ack] = observer.onNext(elem)
     override def onError(ex: Throwable): Unit = observer.onError(ex)
     override def onComplete(): Unit = observer.onComplete()

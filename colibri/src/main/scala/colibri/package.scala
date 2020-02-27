@@ -1,3 +1,4 @@
 package object colibri {
-  type Subject[-I,+O] = Observer[I] with Observable[O]
+  type ProSubject[-I,+O] = Observer[I] with Observable[O]
+  type Subject[T] = ProSubject[T,T]
 }
