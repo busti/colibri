@@ -1,3 +1,4 @@
+import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 import Options._
 
 inThisBuild(Seq(
@@ -55,6 +56,14 @@ lazy val jsSettings = Seq(
     s"-P:scalajs:mapSourceURI:$local->$remote"
   }
 )
+
+lazy val types = crossProject(JSPlatform, JVMPlatform)
+  .in(file("types"))
+  .settings(commonSettings, jsSettings)
+  .settings(
+    name := "colibri-types"
+  )
+
 
 lazy val colibri = project
   .enablePlugins(ScalaJSPlugin)

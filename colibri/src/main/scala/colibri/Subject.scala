@@ -1,6 +1,7 @@
 package colibri
 
 import scala.scalajs.js
+import colibri.helpers._
 
 class ReplaySubject[A] extends Observer[A] with Observable.MaybeValue[A] {
 
@@ -115,14 +116,5 @@ object Subject {
     @inline def transformSource[S[_] : Source, O2](g: Observable[O] => S[O2]): ProSubject[I, O2] = from[Observer, S, I, O2](handler, g(handler))
     @inline def transformSink[G[_] : Sink, I2](f: Observer[I] => G[I2]): ProSubject[I2, O] = from[G, Observable, I2, O](f(handler), handler)
     @inline def transformSubject[G[_] : Sink, S[_] : Source, I2, O2](f: Observer[I] => G[I2])(g: Observable[O] => S[O2]): ProSubject[I2, O2] = from(f(handler), g(handler))
-  }
-
-  object createSubject extends CreateSubject[Subject] {
-    @inline def publish[A]: Subject[A] = Subject.publish[A]
-    @inline def replay[A]: Subject[A] = Subject.replay[A]
-    @inline def behavior[A](seed: A): Subject[A] = Subject.behavior[A](seed)
-  }
-  object createProSubject extends CreateProSubject[ProSubject] {
-    @inline def from[SI[_] : Sink, SO[_] : Source, I,O](sink: SI[I], source: SO[O]): ProSubject[I, O] = Subject.from(sink, source)
   }
 }

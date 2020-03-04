@@ -6,10 +6,11 @@ import cats.{ MonoidK, Functor, FunctorFilter, Eq }
 import cats.effect.{ Effect, IO }
 
 import scala.scalajs.js
+import org.scalajs.dom
+
 import scala.util.control.NonFatal
 import scala.concurrent.{ ExecutionContext, Future }
 import scala.concurrent.duration.FiniteDuration
-
 
 trait Observable[+A] {
   //TODO: def subscribe[G[_]: Sink, F[_] : Sync](sink: G[_ >: A]): F[Cancelable]
@@ -129,7 +130,6 @@ object Observable {
 
   def intervalMillis(delay: Int): Observable[Long] = new Observable[Long] {
     def subscribe[G[_]: Sink](sink: G[_ >: Long]): Cancelable = {
-      import org.scalajs.dom
       var isCancel = false
       var counter: Long = 0
 
@@ -491,7 +491,6 @@ object Observable {
 
   def debounceMillis[S[_]: Source, A](source: S[A])(duration: Int): Observable[A] = new Observable[A] {
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = {
-      import org.scalajs.dom
       var lastTimeout: js.UndefOr[Int] = js.undefined
       var isCancel = false
 
@@ -520,7 +519,6 @@ object Observable {
 
   def sampleMillis[S[_]: Source, A](source: S[A])(duration: Int): Observable[A] = new Observable[A] {
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = {
-      import org.scalajs.dom
       var isCancel = false
       var lastValue: Option[A] = None
 
@@ -551,7 +549,6 @@ object Observable {
 
   def delayMillis[S[_]: Source, A](source: S[A])(duration: Int): Observable[A] = new Observable[A] {
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = {
-      import org.scalajs.dom
       var lastTimeout: js.UndefOr[Int] = js.undefined
       var isCancel = false
 
@@ -791,6 +788,46 @@ object Observable {
     }
   }
 
+  // This is a special Observable for dom events on an EventTarget (e.g. window or document).
+  // It adds an event listener on subscribe and removes it when the subscription is canceled.
+  // It honors the Ack of the subscriber and unregisters the events if an Ack.Stop is received.
+  // It provides convenience methods for doing sync operations on the event before emitting,
+  // like stopPropagation, stopImmediatePropagation, preventDefault. Because it is not
+  // sufficient to do them in an observable.doOnNext(_.stopPropagation()), because this
+  // might be async and event handling/bubbling is done sync.
+  final class Event[+EV] private[colibri](target: dom.EventTarget, eventType: String, operator: EV => Unit) extends Observable[EV] {
+    private val base: Observable[EV] = Observable.create { sink =>
+      var isCancel = false
+
+      val eventHandler: js.Function1[EV, Unit] = { v =>
+        if (!isCancel) {
+          operator(v)
+          sink.onNext(v)
+        }
+      }
+
+      def register() = target.addEventListener(eventType, eventHandler)
+      def unregister() = if (!isCancel) {
+        isCancel = true
+        target.removeEventListener(eventType, eventHandler)
+      }
+
+      register()
+
+      Cancelable(() => unregister())
+    }
+
+    @inline private def withOperator(newOperator: EV => Unit): Event[EV] = new Event[EV](target, eventType, { ev => operator(ev); newOperator(ev) })
+
+    @inline def preventDefault(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.preventDefault)
+    @inline def stopPropagation(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.stopPropagation)
+    @inline def stopImmediatePropagation(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.stopImmediatePropagation)
+
+    @inline def subscribe[G[_] : Sink](sink: G[_ >: EV]): Cancelable = base.subscribe(sink)
+  }
+
+  @inline def ofEvent[EV <: dom.Event](target: dom.EventTarget, eventType: String): Event[EV] = new Event[EV](target, eventType, _ => ())
+
   @inline implicit class Operations[A](val source: Observable[A]) extends AnyVal {
     @inline def liftSource[G[_]: LiftSource]: G[A] = LiftSource[G].lift(source)
     @inline def failed: Observable[Throwable] = Observable.failed(source)
@@ -802,14 +839,6 @@ object Observable {
     @inline def combineLatestMap[S[_]: Source, B, R](combined: S[B])(f: (A, B) => R): Observable[R] = Observable.combineLatestMap(source, combined)(f)
     @inline def withLatest[S[_]: Source, B](latest: S[B]): Observable[(A,B)] = Observable.withLatest(source)(latest)
     @inline def withLatestMap[S[_]: Source, B, R](latest: S[B])(f: (A, B) => R): Observable[R] = Observable.withLatestMap(source)(latest)(f)
-    @inline def withLatest[S[_]: Source, B, C](latestB: S[B], latestC: S[C]): Observable[(A,B,C)] = Observable.withLatest2(source)(latestB, latestC)
-    @inline def withLatestMap[S[_]: Source, B, C, R](latestB: S[B], latestC: S[C])(f: (A, B, C) => R): Observable[R] = Observable.withLatestMap2(source)(latestB, latestC)(f)
-    @inline def withLatest[S[_]: Source, B, C, D](latestB: S[B], latestC: S[C], latestD: S[D]): Observable[(A,B,C,D)] = Observable.withLatest3(source)(latestB, latestC, latestD)
-    @inline def withLatestMap[S[_]: Source, B, C, D, R](latestB: S[B], latestC: S[C], latestD: S[D])(f: (A, B, C, D) => R): Observable[R] = Observable.withLatestMap3(source)(latestB, latestC, latestD)(f)
-    @inline def withLatest[S[_]: Source, B, C, D, E](latestB: S[B], latestC: S[C], latestD: S[D], latestE: S[E]): Observable[(A,B,C,D,E)] = Observable.withLatest4(source)(latestB, latestC, latestD, latestE)
-    @inline def withLatestMap[S[_]: Source, B, C, D, E, R](latestB: S[B], latestC: S[C], latestD: S[D], latestE: S[E])(f: (A, B, C, D, E) => R): Observable[R] = Observable.withLatestMap4(source)(latestB, latestC, latestD, latestE)(f)
-    @inline def withLatest[S[_]: Source, B, C, D, E, F](latestB: S[B], latestC: S[C], latestD: S[D], latestE: S[E], latestF: S[F]): Observable[(A,B,C,D,E,F)] = Observable.withLatest5(source)(latestB, latestC, latestD, latestE, latestF)
-    @inline def withLatestMap[S[_]: Source, B, C, D, E, F, R](latestB: S[B], latestC: S[C], latestD: S[D], latestE: S[E], latestF: S[F])(f: (A, B, C, D, E, F) => R): Observable[R] = Observable.withLatestMap5(source)(latestB, latestC, latestD, latestE, latestF)(f)
     @inline def zipWithIndex: Observable[(A, Int)] = Observable.zipWithIndex(source)
     @inline def debounce(duration: FiniteDuration): Observable[A] = Observable.debounce(source)(duration)
     @inline def debounceMillis(millis: Int): Observable[A] = Observable.debounceMillis(source)(millis)

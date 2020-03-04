@@ -59,7 +59,7 @@ package object monix {
   }
 
   // Cancelable
-  implicit object monixCancelCancelable extends CancelCancelable[Cancelable] {
+  implicit object monixCanCancel extends CanCancel[Cancelable] {
     def cancel(subscription: Cancelable): Unit = subscription.cancel()
   }
 
