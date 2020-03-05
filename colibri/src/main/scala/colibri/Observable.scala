@@ -53,6 +53,9 @@ object Observable {
   type ConnectableValue[A] = Connectable[A] with Value[A]
   type ConnectableMaybeValue[A] = Connectable[A] with MaybeValue[A]
 
+  trait SynchronousExecution
+  type Synchronous[+A] = Observable[A] with SynchronousExecution
+
   object Empty extends Observable[Nothing] {
     @inline def subscribe[G[_]: Sink](sink: G[_ >: Nothing]): Cancelable = Cancelable.empty
   }
@@ -120,6 +123,28 @@ object Observable {
   }
 
   def fromFuture[A](future: Future[A])(implicit ec: ExecutionContext): Observable[A] = fromAsync(IO.fromFuture(IO.pure(future))(IO.contextShift(ec)))
+
+  def ofEvent[EV <: dom.Event](target: dom.EventTarget, eventType: String): Synchronous[EV] = new Observable[EV] with SynchronousExecution {
+    def subscribe[G[_] : Sink](sink: G[_ >: EV]): Cancelable = {
+      var isCancel = false
+
+      val eventHandler: js.Function1[EV, Unit] = { v =>
+        if (!isCancel) {
+          Sink[G].onNext(sink)(v)
+        }
+      }
+
+      def register() = target.addEventListener(eventType, eventHandler)
+      def unregister() = if (!isCancel) {
+        isCancel = true
+        target.removeEventListener(eventType, eventHandler)
+      }
+
+      register()
+
+      Cancelable(() => unregister())
+    }
+  }
 
   def failed[S[_]: Source, A](source: S[A]): Observable[Throwable] = new Observable[Throwable] {
     def subscribe[G[_]: Sink](sink: G[_ >: Throwable]): Cancelable =
@@ -788,44 +813,6 @@ object Observable {
     }
   }
 
-  // This is a special Observable for dom events on an EventTarget (e.g. window or document).
-  // It adds an event listener on subscribe and removes it when the subscription is canceled.
-  // It honors the Ack of the subscriber and unregisters the events if an Ack.Stop is received.
-  // It provides convenience methods for doing sync operations on the event before emitting,
-  // like stopPropagation, stopImmediatePropagation, preventDefault. Because it is not
-  // sufficient to do them in an observable.doOnNext(_.stopPropagation()), because this
-  // might be async and event handling/bubbling is done sync.
-  final class Event[+EV] private[colibri](target: dom.EventTarget, eventType: String, operator: EV => Unit) extends Observable[EV] {
-    @inline private def withOperator(newOperator: EV => Unit): Event[EV] = new Event[EV](target, eventType, { ev => operator(ev); newOperator(ev) })
-
-    @inline def preventDefault(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.preventDefault)
-    @inline def stopPropagation(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.stopPropagation)
-    @inline def stopImmediatePropagation(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.stopImmediatePropagation)
-
-    @inline def subscribe[G[_] : Sink](sink: G[_ >: EV]): Cancelable = {
-      var isCancel = false
-
-      val eventHandler: js.Function1[EV, Unit] = { v =>
-        if (!isCancel) {
-          operator(v)
-          Sink[G].onNext(sink)(v)
-        }
-      }
-
-      def register() = target.addEventListener(eventType, eventHandler)
-      def unregister() = if (!isCancel) {
-        isCancel = true
-        target.removeEventListener(eventType, eventHandler)
-      }
-
-      register()
-
-      Cancelable(() => unregister())
-    }
-  }
-
-  @inline def ofEvent[EV <: dom.Event](target: dom.EventTarget, eventType: String): Event[EV] = new Event[EV](target, eventType, _ => ())
-
   @inline implicit class Operations[A](val source: Observable[A]) extends AnyVal {
     @inline def liftSource[G[_]: LiftSource]: G[A] = LiftSource[G].lift(source)
     @inline def failed: Observable[Throwable] = Observable.failed(source)
@@ -859,14 +846,14 @@ object Observable {
     @inline def recover(f: PartialFunction[Throwable, A]): Observable[A] = Observable.recover(source)(f)
     @inline def recoverOption(f: PartialFunction[Throwable, Option[A]]): Observable[A] = Observable.recoverOption(source)(f)
     @inline def publish: Observable[A] = Observable.publish(source)
-    @inline def replay: Observable[A] = Observable.replay(source)
-    @inline def behavior(value: A): Observable[A] = Observable.behavior(source)(value)
+    @inline def replay: Observable.MaybeValue[A] = Observable.replay(source)
+    @inline def behavior(value: A): Observable.Value[A] = Observable.behavior(source)(value)
     @inline def publishConnectable: Observable.Connectable[A] = Observable.publishConnectable(source)
     @inline def replayConnectable: Observable.ConnectableMaybeValue[A] = Observable.replayConnectable(source)
     @inline def behaviorConnectable(value: A): Observable.ConnectableValue[A] = Observable.behaviorConnectable(source)(value)
     @inline def publishSelector[B](f: Observable[A] => Observable[B]): Observable[B] = Observable.publishSelector(source)(f)
-    @inline def replaySelector[B](f: Observable[A] => Observable[B]): Observable[B] = Observable.replaySelector(source)(f)
-    @inline def behaviorSelector[B](value: A)(f: Observable[A] => Observable[B]): Observable[B] = Observable.behaviorSelector(source)(value)(f)
+    @inline def replaySelector[B](f: Observable.MaybeValue[A] => Observable[B]): Observable[B] = Observable.replaySelector(source)(f)
+    @inline def behaviorSelector[B](value: A)(f: Observable.Value[A] => Observable[B]): Observable[B] = Observable.behaviorSelector(source)(value)(f)
     @inline def transformSource[S[_]: Source, B](transform: Observable[A] => S[B]): Observable[B] = Observable.transformSource(source)(transform)
     @inline def transformSink[G[_]: Sink, B](transform: Observer[_ >: B] => G[A]): Observable[B] = Observable.transformSink[Observable, G, A, B](source)(transform)
     @inline def prepend(value: A): Observable[A] = Observable.prepend(source)(value)
@@ -884,6 +871,20 @@ object Observable {
     @inline def withDefaultSubscription[G[_] : Sink](sink: G[A]): Observable[A] = Observable.withDefaultSubscription(source)(sink)
     @inline def subscribe(): Cancelable = source.subscribe(Observer.empty)
     @inline def foreach(f: A => Unit): Cancelable = source.subscribe(Observer.create(f))
+  }
+
+  @inline implicit class SyncOperations[A](val source: Synchronous[A]) extends AnyVal {
+    def synchronousMap[B](f: A => B): Synchronous[B] = new Observable[B] with SynchronousExecution {
+      def subscribe[G[_]: Sink](sink: G[_ >: B]): Cancelable = source.subscribe(Observer.contramap(sink)(f))
+    }
+  }
+
+  @inline implicit class SyncEventOperations[EV <: dom.Event](val source: Synchronous[EV]) extends AnyVal {
+    @inline private def withOperator(newOperator: EV => Unit): Synchronous[EV] = source.synchronousMap { ev => newOperator(ev); ev }
+
+    @inline def preventDefault: Synchronous[EV] = withOperator(_.preventDefault)
+    @inline def stopPropagation: Synchronous[EV] = withOperator(_.stopPropagation)
+    @inline def stopImmediatePropagation: Synchronous[EV] = withOperator(_.stopImmediatePropagation)
   }
 
   private def recovered[T](action: => Unit, onError: Throwable => Unit) = try action catch { case NonFatal(t) => onError(t) }
