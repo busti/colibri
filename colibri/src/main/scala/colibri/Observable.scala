@@ -796,13 +796,19 @@ object Observable {
   // sufficient to do them in an observable.doOnNext(_.stopPropagation()), because this
   // might be async and event handling/bubbling is done sync.
   final class Event[+EV] private[colibri](target: dom.EventTarget, eventType: String, operator: EV => Unit) extends Observable[EV] {
-    private val base: Observable[EV] = Observable.create { sink =>
+    @inline private def withOperator(newOperator: EV => Unit): Event[EV] = new Event[EV](target, eventType, { ev => operator(ev); newOperator(ev) })
+
+    @inline def preventDefault(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.preventDefault)
+    @inline def stopPropagation(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.stopPropagation)
+    @inline def stopImmediatePropagation(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.stopImmediatePropagation)
+
+    @inline def subscribe[G[_] : Sink](sink: G[_ >: EV]): Cancelable = {
       var isCancel = false
 
       val eventHandler: js.Function1[EV, Unit] = { v =>
         if (!isCancel) {
           operator(v)
-          sink.onNext(v)
+          Sink[G].onNext(sink)(v)
         }
       }
 
@@ -816,14 +822,6 @@ object Observable {
 
       Cancelable(() => unregister())
     }
-
-    @inline private def withOperator(newOperator: EV => Unit): Event[EV] = new Event[EV](target, eventType, { ev => operator(ev); newOperator(ev) })
-
-    @inline def preventDefault(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.preventDefault)
-    @inline def stopPropagation(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.stopPropagation)
-    @inline def stopImmediatePropagation(implicit env: EV <:< dom.Event): Event[EV] = withOperator(_.stopImmediatePropagation)
-
-    @inline def subscribe[G[_] : Sink](sink: G[_ >: EV]): Cancelable = base.subscribe(sink)
   }
 
   @inline def ofEvent[EV <: dom.Event](target: dom.EventTarget, eventType: String): Event[EV] = new Event[EV](target, eventType, _ => ())

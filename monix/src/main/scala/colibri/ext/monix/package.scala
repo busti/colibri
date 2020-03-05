@@ -6,6 +6,7 @@ import _root_.monix.reactive.{OverflowStrategy, Observable, Observer}
 import _root_.monix.reactive.subjects.Var
 
 import colibri.effect._
+import colibri.helpers._
 import colibri._
 
 package object monix {

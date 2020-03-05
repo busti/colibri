@@ -1,6 +1,7 @@
 package colibri
 
 import cats.{MonoidK, Contravariant}
+import colibri.helpers._
 
 import scala.util.control.NonFatal
 
