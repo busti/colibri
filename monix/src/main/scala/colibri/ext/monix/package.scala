@@ -64,16 +64,6 @@ package object monix {
     def cancel(subscription: Cancelable): Unit = subscription.cancel()
   }
 
-  // Subject
-  type MonixProSubject[-I, +O] = Observable[O] with Observer[I]
-  type MonixSubject[T] = MonixProSubject[T,T]
-
-  implicit object monixCreateSubject extends CreateSubject[MonixSubject] {
-    def replay[A]: MonixSubject[A] = MonixSubject.replay[A]
-    def behavior[A](seed: A): MonixSubject[A] = MonixSubject.behavior[A](seed)
-    def publish[A]: MonixSubject[A] = MonixSubject.publish[A]
-  }
-
   implicit object coeval extends RunSyncEffect[Coeval] {
     @inline def unsafeRun[T](effect: Coeval[T]): T = effect.apply()
   }
