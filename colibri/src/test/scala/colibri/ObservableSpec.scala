@@ -264,7 +264,7 @@ class ObservableSpec extends AnyFlatSpec with Matchers {
     var mapped = List.empty[Int]
     var received = List.empty[Int]
     val handler = Subject.replay[Int]
-    val stream = Observable.merge(handler, Observable.fromIterable(Seq(1,2,3))).map { x => mapped ::= x; x }.publish
+    val stream = Observable.merge(handler, Observable.fromIterable(Seq(1,2,3))).map { x => mapped ::= x; x }.publish.refCount
 
     mapped shouldBe List.empty
 
@@ -303,7 +303,7 @@ class ObservableSpec extends AnyFlatSpec with Matchers {
     var received = List.empty[Int]
     var errors = 0
     val handler = Subject.replay[Int]
-    val stream = Observable.merge(handler, Observable.fromIterable(Seq(1,2,3))).map { x => mapped ::= x; x }.replay
+    val stream = Observable.merge(handler, Observable.fromIterable(Seq(1,2,3))).map { x => mapped ::= x; x }.replay.refCount
 
     mapped shouldBe List.empty
 

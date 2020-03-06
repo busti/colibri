@@ -50,8 +50,12 @@ object Observable {
     def now(): Option[A]
   }
 
-  type ConnectableValue[A] = Connectable[A] with Value[A]
-  type ConnectableMaybeValue[A] = Connectable[A] with MaybeValue[A]
+  type ConnectableValue[+A] = Connectable[A] with Value[A]
+  type ConnectableMaybeValue[+A] = Connectable[A] with MaybeValue[A]
+
+  type Hot[+A] = Observable[A] with Cancelable
+  type HotValue[+A] = Value[A] with Cancelable
+  type HotMaybeValue[+A] = MaybeValue[A] with Cancelable
 
   final class Synchronous[+A] private[colibri](source: Observable[A]) extends Observable[A] {
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = source.subscribe(sink)
@@ -666,53 +670,49 @@ object Observable {
     def subscribe[GG[_]: Sink](sink: GG[_ >: B]): Cancelable = Source[F].subscribe(source)(transform(Observer.lift(sink)))
   }
 
-  @inline def publish[F[_]: Source, A](source: F[A]): Observable[A] = multicast(source)(Subject.publish[A])
-  @inline def replay[F[_]: Source, A](source: F[A]): Observable.MaybeValue[A] = multicastMaybeValue(source)(Subject.replay[A])
-  @inline def behavior[F[_]: Source, A](source: F[A])(value: A): Observable.Value[A] = multicastValue(source)(Subject.behavior[A](value))
+  @inline def share[F[_]: Source, A](source: F[A]): Observable[A] = publish(source).refCount
 
-  @inline def publishSelector[F[_]: Source, A, B](source: F[A])(f: Observable[A] => Observable[B]): Observable[B] = transformSource(source)(s => f(publish(s)))
-  @inline def replaySelector[F[_]: Source, A, B](source: F[A])(f: Observable.MaybeValue[A] => Observable[B]): Observable[B] = transformSource(source)(s => f(replay(s)))
-  @inline def behaviorSelector[F[_]: Source, A, B](source: F[A])(value: A)(f: Observable.Value[A] => Observable[B]): Observable[B] = transformSource(source)(s => f(behavior(s)(value)))
+  @inline def publish[F[_]: Source, A](source: F[A]): Observable.Connectable[A] = multicast(source)(Subject.publish[A])
+  @inline def replay[F[_]: Source, A](source: F[A]): Observable.ConnectableMaybeValue[A] = multicastMaybeValue(source)(Subject.replay[A])
+  @inline def behavior[F[_]: Source, A](source: F[A])(value: A): Observable.ConnectableValue[A] = multicastValue(source)(Subject.behavior[A](value))
 
-  def multicast[F[_]: Source, A, S[_] : Source : Sink](source: F[A])(pipe: S[A]): Observable[A] = new Observable[A] {
-    private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
-    def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = Cancelable.composite(Source[S].subscribe(pipe)(sink), refCount.ref())
-  }
+  @inline def publishSelector[F[_]: Source, A, B](source: F[A])(f: Observable[A] => Observable[B]): Observable[B] = transformSource(source)(s => f(publish(s).refCount))
+  @inline def replaySelector[F[_]: Source, A, B](source: F[A])(f: Observable.MaybeValue[A] => Observable[B]): Observable[B] = transformSource(source)(s => f(replay(s).refCount))
+  @inline def behaviorSelector[F[_]: Source, A, B](source: F[A])(value: A)(f: Observable.Value[A] => Observable[B]): Observable[B] = transformSource(source)(s => f(behavior(s)(value).refCount))
 
-  def multicastValue[F[_]: Source, A](source: F[A])(pipe: Subject.Value[A]): Observable.Value[A] = new Observable.Value[A] {
-    private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
-    def now(): A = pipe.now()
-    def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = Cancelable.composite(pipe.subscribe(sink), refCount.ref())
-  }
-
-  def multicastMaybeValue[F[_]: Source, A](source: F[A])(pipe: Subject.MaybeValue[A]): Observable.MaybeValue[A] = new Observable.MaybeValue[A] {
-    private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
-    def now(): Option[A] = pipe.now()
-    def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = Cancelable.composite(pipe.subscribe(sink), refCount.ref())
-  }
-
-  @inline def publishConnectable[F[_]: Source, A](source: F[A]): Connectable[A] = multicastConnectable(source)(Subject.publish[A])
-  @inline def replayConnectable[F[_]: Source, A](source: F[A]): ConnectableMaybeValue[A] = multicastConnectableMaybeValue(source)(Subject.replay[A])
-  @inline def behaviorConnectable[F[_]: Source, A](source: F[A])(seed: A): ConnectableValue[A] = multicastConnectableValue(source)(Subject.behavior[A](seed))
-
-  def multicastConnectable[F[_]: Source, A, S[_] : Source : Sink](source: F[A])(pipe: S[A]): Connectable[A] = new Connectable[A] {
+  def multicast[F[_]: Source, A, S[_] : Source : Sink](source: F[A])(pipe: S[A]): Connectable[A] = new Connectable[A] {
     private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
     def connect(): Cancelable = refCount.ref()
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = Source[S].subscribe(pipe)(sink)
   }
 
-  def multicastConnectableValue[F[_]: Source, A](source: F[A])(pipe: Subject.Value[A]): ConnectableValue[A] = new Connectable[A] with Value[A] {
+  def multicastValue[F[_]: Source, A](source: F[A])(pipe: Subject.Value[A]): ConnectableValue[A] = new Connectable[A] with Value[A] {
     private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
     def now(): A = pipe.now()
     def connect(): Cancelable = refCount.ref()
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = pipe.subscribe(sink)
   }
 
-  def multicastConnectableMaybeValue[F[_]: Source, A](source: F[A])(pipe: Subject.MaybeValue[A]): ConnectableMaybeValue[A] = new Connectable[A] with MaybeValue[A] {
+  def multicastMaybeValue[F[_]: Source, A](source: F[A])(pipe: Subject.MaybeValue[A]): ConnectableMaybeValue[A] = new Connectable[A] with MaybeValue[A] {
     private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
     def now(): Option[A] = pipe.now()
     def connect(): Cancelable = refCount.ref()
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = pipe.subscribe(sink)
+  }
+
+  def refCount[A](source: Connectable[A]): Observable[A] = new Observable[A] {
+    def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable =
+      Cancelable.composite(source.subscribe(sink), source.connect())
+  }
+  def refCountValue[A](source: ConnectableValue[A]): Observable.Value[A] = new Value[A] {
+    def now() = source.now()
+    def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable =
+      Cancelable.composite(source.subscribe(sink), source.connect())
+  }
+  def refCountMaybeValue[A](source: ConnectableMaybeValue[A]): Observable.MaybeValue[A] = new Observable.MaybeValue[A] {
+    def now() = source.now()
+    def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable =
+      Cancelable.composite(source.subscribe(sink), source.connect())
   }
 
   @inline def prependSync[S[_]: Source, A, F[_] : RunSyncEffect](source: S[A])(value: F[A]): Observable[A] = concatSync[F, A, S](value, source)
@@ -875,12 +875,9 @@ object Observable {
     @inline def scan[B](seed: B)(f: (B, A) => B): Observable[B] = Observable.scan(source)(seed)(f)
     @inline def recover(f: PartialFunction[Throwable, A]): Observable[A] = Observable.recover(source)(f)
     @inline def recoverOption(f: PartialFunction[Throwable, Option[A]]): Observable[A] = Observable.recoverOption(source)(f)
-    @inline def publish: Observable[A] = Observable.publish(source)
-    @inline def replay: Observable.MaybeValue[A] = Observable.replay(source)
-    @inline def behavior(value: A): Observable.Value[A] = Observable.behavior(source)(value)
-    @inline def publishConnectable: Observable.Connectable[A] = Observable.publishConnectable(source)
-    @inline def replayConnectable: Observable.ConnectableMaybeValue[A] = Observable.replayConnectable(source)
-    @inline def behaviorConnectable(value: A): Observable.ConnectableValue[A] = Observable.behaviorConnectable(source)(value)
+    @inline def publish: Observable.Connectable[A] = Observable.publish(source)
+    @inline def replay: Observable.ConnectableMaybeValue[A] = Observable.replay(source)
+    @inline def behavior(value: A): Observable.ConnectableValue[A] = Observable.behavior(source)(value)
     @inline def publishSelector[B](f: Observable[A] => Observable[B]): Observable[B] = Observable.publishSelector(source)(f)
     @inline def replaySelector[B](f: Observable.MaybeValue[A] => Observable[B]): Observable[B] = Observable.replaySelector(source)(f)
     @inline def behaviorSelector[B](value: A)(f: Observable.Value[A] => Observable[B]): Observable[B] = Observable.behaviorSelector(source)(value)(f)
@@ -901,6 +898,16 @@ object Observable {
     @inline def withDefaultSubscription[G[_] : Sink](sink: G[A]): Observable[A] = Observable.withDefaultSubscription(source)(sink)
     @inline def subscribe(): Cancelable = source.subscribe(Observer.empty)
     @inline def foreach(f: A => Unit): Cancelable = source.subscribe(Observer.create(f))
+  }
+
+  @inline implicit class ConnectableOperations[A](val source: Observable.Connectable[A]) extends AnyVal {
+    @inline def refCount: Observable[A] = Observable.refCount(source)
+  }
+  @inline implicit class ConnectableValueOperations[A](val source: Observable.ConnectableValue[A]) extends AnyVal {
+    @inline def refCount: Observable.Value[A] = Observable.refCountValue(source)
+  }
+  @inline implicit class ConnectableMaybeValueOperations[A](val source: Observable.ConnectableMaybeValue[A]) extends AnyVal {
+    @inline def refCount: Observable.MaybeValue[A] = Observable.refCountMaybeValue(source)
   }
 
   @inline implicit class SyncEventOperations[EV <: dom.Event](val source: Synchronous[EV]) extends AnyVal {
