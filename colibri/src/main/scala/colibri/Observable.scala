@@ -53,8 +53,9 @@ object Observable {
   type ConnectableValue[A] = Connectable[A] with Value[A]
   type ConnectableMaybeValue[A] = Connectable[A] with MaybeValue[A]
 
-  trait SynchronousExecution
-  type Synchronous[+A] = Observable[A] with SynchronousExecution
+  final class Synchronous[+A] private[colibri](source: Observable[A]) extends Observable[A] {
+    def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = source.subscribe(sink)
+  }
 
   object Empty extends Observable[Nothing] {
     @inline def subscribe[G[_]: Sink](sink: G[_ >: Nothing]): Cancelable = Cancelable.empty
@@ -124,7 +125,7 @@ object Observable {
 
   def fromFuture[A](future: Future[A])(implicit ec: ExecutionContext): Observable[A] = fromAsync(IO.fromFuture(IO.pure(future))(IO.contextShift(ec)))
 
-  def ofEvent[EV <: dom.Event](target: dom.EventTarget, eventType: String): Synchronous[EV] = new Observable[EV] with SynchronousExecution {
+  def ofEvent[EV <: dom.Event](target: dom.EventTarget, eventType: String): Synchronous[EV] = new Synchronous(new Observable[EV] {
     def subscribe[G[_] : Sink](sink: G[_ >: EV]): Cancelable = {
       var isCancel = false
 
@@ -144,7 +145,7 @@ object Observable {
 
       Cancelable(() => unregister())
     }
-  }
+  })
 
   def failed[S[_]: Source, A](source: S[A]): Observable[Throwable] = new Observable[Throwable] {
     def subscribe[G[_]: Sink](sink: G[_ >: Throwable]): Cancelable =
@@ -873,14 +874,8 @@ object Observable {
     @inline def foreach(f: A => Unit): Cancelable = source.subscribe(Observer.create(f))
   }
 
-  @inline implicit class SyncOperations[A](val source: Synchronous[A]) extends AnyVal {
-    def synchronousMap[B](f: A => B): Synchronous[B] = new Observable[B] with SynchronousExecution {
-      def subscribe[G[_]: Sink](sink: G[_ >: B]): Cancelable = source.subscribe(Observer.contramap(sink)(f))
-    }
-  }
-
   @inline implicit class SyncEventOperations[EV <: dom.Event](val source: Synchronous[EV]) extends AnyVal {
-    @inline private def withOperator(newOperator: EV => Unit): Synchronous[EV] = source.synchronousMap { ev => newOperator(ev); ev }
+    @inline private def withOperator(newOperator: EV => Unit): Synchronous[EV] = new Synchronous(source.map { ev => newOperator(ev); ev })
 
     @inline def preventDefault: Synchronous[EV] = withOperator(_.preventDefault)
     @inline def stopPropagation: Synchronous[EV] = withOperator(_.stopPropagation)
