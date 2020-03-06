@@ -40,6 +40,16 @@ object Observable {
     @inline def mapFilter[A, B](fa: Observable[A])(f: A => Option[B]): Observable[B] = Observable.mapFilter(fa)(f)
   }
 
+  implicit object createSubject extends CreateSubject[Subject] {
+    @inline def publish[A]: Subject[A] = Subject.publish[A]
+    @inline def replay[A]: Subject[A] = Subject.replay[A]
+    @inline def behavior[A](seed: A): Subject[A] = Subject.behavior[A](seed)
+  }
+
+  implicit object createProSubject extends CreateProSubject[ProSubject] {
+    @inline def from[SI[_] : Sink, SO[_] : Source, I,O](sink: SI[I], source: SO[O]): ProSubject[I, O] = ProSubject.from(sink, source)
+  }
+
   trait Connectable[+A] extends Observable[A] {
     def connect(): Cancelable
   }
