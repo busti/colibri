@@ -2,6 +2,7 @@ package colibri.ext
 
 import _root_.monix.eval.Coeval
 import _root_.monix.execution.{Ack, Scheduler, Cancelable}
+import _root_.monix.execution.cancelables.CompositeCancelable
 import _root_.monix.reactive.{OverflowStrategy, Observable, Observer}
 import _root_.monix.reactive.subjects.Var
 
@@ -66,5 +67,11 @@ package object monix {
 
   implicit object coeval extends RunSyncEffect[Coeval] {
     @inline def unsafeRun[T](effect: Coeval[T]): T = effect.apply()
+  }
+
+  //TODO: add to monix?
+  implicit object CancelableMonoid extends Monoid[Cancelable] {
+    def empty: Cancelable = Cancelable.empty
+    def combine(x: Cancelable, y: Cancelable): Cancelable = CompositeCancelable(x, y)
   }
 }
