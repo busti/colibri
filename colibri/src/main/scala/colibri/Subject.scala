@@ -82,12 +82,6 @@ object Subject {
 
   def publish[O]: PublishSubject[O] = new PublishSubject[O]
 
-  @inline def from[SI[_] : Sink, SO[_] : Source, I, O](sink: SI[I], source: SO[O]): ProSubject[I, O] = new Observer[I] with Observable[O] {
-    @inline def onNext(value: I): Unit = Sink[SI].onNext(sink)(value)
-    @inline def onError(error: Throwable): Unit = Sink[SI].onError(sink)(error)
-    @inline def subscribe[G[_] : Sink](sink: G[_ >: O]): Cancelable = Source[SO].subscribe(source)(sink)
-  }
-
   @inline implicit class ValueOperations[A](val handler: Subject.Value[A]) extends AnyVal {
     def lens[B](read: A => B)(write: (A, B) => A): Subject.Value[B] = new Observer[B] with Observable.Value[B] {
       @inline def now() = read(handler.now())
@@ -104,6 +98,17 @@ object Subject {
       @inline def onError(error: Throwable): Unit = handler.onError(error)
       @inline def subscribe[G[_] : Sink](sink: G[_ >: B]): Cancelable = handler.map(read).subscribe(sink)
     }
+  }
+}
+
+object ProSubject {
+  type Value[-I,+O] = Observer[I] with Observable.Value[O]
+  type MaybeValue[-I,+O] = Observer[I] with Observable.MaybeValue[O]
+
+  def from[SI[_] : Sink, SO[_] : Source, I, O](sink: SI[I], source: SO[O]): ProSubject[I, O] = new Observer[I] with Observable[O] {
+    @inline def onNext(value: I): Unit = Sink[SI].onNext(sink)(value)
+    @inline def onError(error: Throwable): Unit = Sink[SI].onError(sink)(error)
+    @inline def subscribe[G[_] : Sink](sink: G[_ >: O]): Cancelable = Source[SO].subscribe(source)(sink)
   }
 
   @inline implicit class Operations[I,O](val handler: ProSubject[I,O]) extends AnyVal {
