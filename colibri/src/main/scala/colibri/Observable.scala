@@ -273,6 +273,13 @@ object Observable {
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = Source[F].subscribe(source)(Observer.contrafilter[G, A](sink)(f))
   }
 
+  def scan0[F[_]: Source, A, B](source: F[A])(seed: B)(f: (B, A) => B): Observable[B] = new Observable[B] {
+    def subscribe[G[_]: Sink](sink: G[_ >: B]): Cancelable = {
+      Sink[G].onNext(sink)(seed)
+      Source[F].subscribe(source)(Observer.contrascan[G, B, A](sink)(seed)(f))
+    }
+  }
+
   def scan[F[_]: Source, A, B](source: F[A])(seed: B)(f: (B, A) => B): Observable[B] = new Observable[B] {
     def subscribe[G[_]: Sink](sink: G[_ >: B]): Cancelable = Source[F].subscribe(source)(Observer.contrascan[G, B, A](sink)(seed)(f))
   }
@@ -651,12 +658,12 @@ object Observable {
     }
   }
 
-  def transformSource[F[_]: Source, FF[_]: Source, A, B](source: F[A])(transform: F[A] => FF[B]): Observable[B] = new Observable[B] {
+  @inline def transformSource[F[_]: Source, FF[_]: Source, A, B](source: F[A])(transform: F[A] => FF[B]): Observable[B] = new Observable[B] {
     def subscribe[G[_]: Sink](sink: G[_ >: B]): Cancelable = Source[FF].subscribe(transform(source))(sink)
   }
 
-  def transformSink[F[_]: Source, G[_]: Sink, A, B](source: F[A])(transform: Observer[_ >: B] => G[A]): Observable[B] = new Observable[B] {
-    def subscribe[GGG[_]: Sink](sink: GGG[_ >: B]): Cancelable = Source[F].subscribe(source)(transform(Observer.lift(sink)))
+  @inline def transformSink[F[_]: Source, G[_]: Sink, A, B](source: F[A])(transform: Observer[_ >: B] => G[A]): Observable[B] = new Observable[B] {
+    def subscribe[GG[_]: Sink](sink: GG[_ >: B]): Cancelable = Source[F].subscribe(source)(transform(Observer.lift(sink)))
   }
 
   @inline def publish[F[_]: Source, A](source: F[A]): Observable[A] = multicast(source)(Subject.publish[A])
