@@ -652,13 +652,13 @@ object Observable {
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = Cancelable.composite(Source[S].subscribe(pipe)(sink), refCount.ref())
   }
 
-  def multicastValue[F[_]: Source, A](source: F[A])(pipe: Observer[A] with Observable.Value[A]): Observable.Value[A] = new Observable.Value[A] {
+  def multicastValue[F[_]: Source, A](source: F[A])(pipe: Subject.Value[A]): Observable.Value[A] = new Observable.Value[A] {
     private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
     def now(): A = pipe.now()
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = Cancelable.composite(pipe.subscribe(sink), refCount.ref())
   }
 
-  def multicastMaybeValue[F[_]: Source, A](source: F[A])(pipe: Observer[A] with Observable.MaybeValue[A]): Observable.MaybeValue[A] = new Observable.MaybeValue[A] {
+  def multicastMaybeValue[F[_]: Source, A](source: F[A])(pipe: Subject.MaybeValue[A]): Observable.MaybeValue[A] = new Observable.MaybeValue[A] {
     private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
     def now(): Option[A] = pipe.now()
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = Cancelable.composite(pipe.subscribe(sink), refCount.ref())
@@ -674,14 +674,14 @@ object Observable {
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = Source[S].subscribe(pipe)(sink)
   }
 
-  def multicastConnectableValue[F[_]: Source, A](source: F[A])(pipe: Observer[A] with Value[A]): ConnectableValue[A] = new Connectable[A] with Value[A] {
+  def multicastConnectableValue[F[_]: Source, A](source: F[A])(pipe: Subject.Value[A]): ConnectableValue[A] = new Connectable[A] with Value[A] {
     private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
     def now(): A = pipe.now()
     def connect(): Cancelable = refCount.ref()
     def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = pipe.subscribe(sink)
   }
 
-  def multicastConnectableMaybeValue[F[_]: Source, A](source: F[A])(pipe: Observer[A] with MaybeValue[A]): ConnectableMaybeValue[A] = new Connectable[A] with MaybeValue[A] {
+  def multicastConnectableMaybeValue[F[_]: Source, A](source: F[A])(pipe: Subject.MaybeValue[A]): ConnectableMaybeValue[A] = new Connectable[A] with MaybeValue[A] {
     private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
     def now(): Option[A] = pipe.now()
     def connect(): Cancelable = refCount.ref()
