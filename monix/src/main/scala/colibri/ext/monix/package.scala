@@ -75,4 +75,17 @@ package object monix {
     def empty: Cancelable = Cancelable.empty
     def combine(x: Cancelable, y: Cancelable): Cancelable = CompositeCancelable(x, y)
   }
+
+  type MonixProSubject[-I, +O] = Observable[O] with Observer[I]
+  type MonixSubject[T] = MonixProSubject[T,T]
+
+  implicit object monixCreateSubject extends CreateSubject[MonixSubject] {
+    def replay[A]: MonixSubject[A] = MonixSubject.replay[A]
+    def behavior[A](seed: A): MonixSubject[A] = MonixSubject.behavior[A](seed)
+    def publish[A]: MonixSubject[A] = MonixSubject.publish[A]
+  }
+
+  implicit object monixCreateProSubject extends CreateProSubject[MonixProSubject] {
+    @inline def from[SI[_] : Sink, SO[_] : Source, I,O](sink: SI[I], source: SO[O]): MonixProSubject[I, O] = MonixProSubject.from(LiftSink[Observer].lift(sink), LiftSource[Observable].lift(source))
+  }
 }

@@ -81,6 +81,12 @@ object Subject {
   def behavior[O](seed: O): BehaviorSubject[O] = new BehaviorSubject[O](seed)
 
   def publish[O]: PublishSubject[O] = new PublishSubject[O]
+
+  implicit object createSubject extends CreateSubject[Subject] {
+    @inline def publish[A]: Subject[A] = Subject.publish[A]
+    @inline def replay[A]: Subject[A] = Subject.replay[A]
+    @inline def behavior[A](seed: A): Subject[A] = Subject.behavior[A](seed)
+  }
 }
 
 object ProSubject {
@@ -91,5 +97,9 @@ object ProSubject {
     @inline def onNext(value: I): Unit = Sink[SI].onNext(sink)(value)
     @inline def onError(error: Throwable): Unit = Sink[SI].onError(sink)(error)
     @inline def subscribe[G[_] : Sink](sink: G[_ >: O]): Cancelable = Source[SO].subscribe(source)(sink)
+  }
+
+  implicit object createProSubject extends CreateProSubject[ProSubject] {
+    @inline def from[SI[_] : Sink, SO[_] : Source, I,O](sink: SI[I], source: SO[O]): ProSubject[I, O] = ProSubject.from(sink, source)
   }
 }
