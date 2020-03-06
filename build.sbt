@@ -99,4 +99,4 @@ lazy val root = project
 
     skip in publish := true,
   )
-  .aggregate(colibri/*, monix*/)
+  .aggregate(colibri, monix)
