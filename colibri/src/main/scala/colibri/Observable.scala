@@ -459,18 +459,18 @@ object Observable {
   def combineLatestMap[SA[_]: Source, SB[_]: Source, A, B, C, D, E, F, R](sourceA: SA[A], sourceB: SB[B], sourceC: SB[C], sourceD: SB[D], sourceE: SB[E], sourceF: SB[F])(f: (A, B, C, D, E, F) => R): Observable[R] =
     combineLatestMap(sourceA, combineLatest(sourceB, sourceC, sourceD, sourceE, sourceF))((a, tail) => f(a, tail._1, tail._2, tail._3, tail._4, tail._5))
 
-  def withLatest[SA[_]: Source, SB[_]: Source, A, B](source: SA[A])(latest: SB[B]): Observable[(A,B)] =
-    withLatestMap(source)(latest)(_ -> _)
-  def withLatest2[SA[_]: Source, SB[_]: Source, A, B, C](source: SA[A])(latestB: SB[B], latestC: SB[C]): Observable[(A,B,C)] =
-    withLatestMap2(source)(latestB, latestC)((a,b,c) => (a,b,c))
-  def withLatest3[SA[_]: Source, SB[_]: Source, A, B, C, D](source: SA[A])(latestB: SB[B], latestC: SB[C], latestD: SB[D]): Observable[(A,B,C,D)] =
-    withLatestMap3(source)(latestB, latestC, latestD)((a,b,c,d) => (a,b,c,d))
-  def withLatest4[SA[_]: Source, SB[_]: Source, A, B, C, D, E](source: SA[A])(latestB: SB[B], latestC: SB[C], latestD: SB[D], latestE: SB[E]): Observable[(A,B,C,D,E)] =
-    withLatestMap4(source)(latestB, latestC, latestD, latestE)((a,b,c,d,e) => (a,b,c,d,e))
-  def withLatest5[SA[_]: Source, SB[_]: Source, A, B, C, D, E, F](source: SA[A])(latestB: SB[B], latestC: SB[C], latestD: SB[D], latestE: SB[E], latestF: SB[F]): Observable[(A,B,C,D,E,F)] =
-    withLatestMap5(source)(latestB, latestC, latestD, latestE, latestF)((a,b,c,d,e,f) => (a,b,c,d,e,f))
+  def withLatest[SA[_]: Source, SB[_]: Source, A, B](source: SA[A], latest: SB[B]): Observable[(A,B)] =
+    withLatestMap(source, latest)(_ -> _)
+  def withLatest[SA[_]: Source, SB[_]: Source, A, B, C](source: SA[A], latestB: SB[B], latestC: SB[C]): Observable[(A,B,C)] =
+    withLatestMap(source, latestB, latestC)((a,b,c) => (a,b,c))
+  def withLatest[SA[_]: Source, SB[_]: Source, A, B, C, D](source: SA[A], latestB: SB[B], latestC: SB[C], latestD: SB[D]): Observable[(A,B,C,D)] =
+    withLatestMap(source, latestB, latestC, latestD)((a,b,c,d) => (a,b,c,d))
+  def withLatest[SA[_]: Source, SB[_]: Source, A, B, C, D, E](source: SA[A], latestB: SB[B], latestC: SB[C], latestD: SB[D], latestE: SB[E]): Observable[(A,B,C,D,E)] =
+    withLatestMap(source, latestB, latestC, latestD, latestE)((a,b,c,d,e) => (a,b,c,d,e))
+  def withLatest[SA[_]: Source, SB[_]: Source, A, B, C, D, E, F](source: SA[A], latestB: SB[B], latestC: SB[C], latestD: SB[D], latestE: SB[E], latestF: SB[F]): Observable[(A,B,C,D,E,F)] =
+    withLatestMap(source, latestB, latestC, latestD, latestE, latestF)((a,b,c,d,e,f) => (a,b,c,d,e,f))
 
-  def withLatestMap[SA[_]: Source, SB[_]: Source, A, B, R](source: SA[A])(latest: SB[B])(f: (A, B) => R): Observable[R] = new Observable[R] {
+  def withLatestMap[SA[_]: Source, SB[_]: Source, A, B, R](source: SA[A], latest: SB[B])(f: (A, B) => R): Observable[R] = new Observable[R] {
     def subscribe[G[_]: Sink](sink: G[_ >: R]): Cancelable = {
       var latestValue: Option[B] = None
 
@@ -487,16 +487,16 @@ object Observable {
     }
   }
 
-  def withLatestMap2[SA[_]: Source, SB[_]: Source, A, B, C, R](source: SA[A])(latestB: SB[B], latestC: SB[C])(f: (A, B, C) => R): Observable[R] =
-    withLatestMap(source)(combineLatest(latestB, latestC))((a, tail) => f(a, tail._1, tail._2))
-  def withLatestMap3[SA[_]: Source, SB[_]: Source, A, B, C, D, R](source: SA[A])(latestB: SB[B], latestC: SB[C], latestD: SB[D])(f: (A, B, C, D) => R): Observable[R] =
-    withLatestMap(source)(combineLatest(latestB, latestC, latestD))((a, tail) => f(a, tail._1, tail._2, tail._3))
-  def withLatestMap4[SA[_]: Source, SB[_]: Source, A, B, C, D, E, R](source: SA[A])(latestB: SB[B], latestC: SB[C], latestD: SB[D], latestE: SB[E])(f: (A, B, C, D, E) => R): Observable[R] =
-    withLatestMap(source)(combineLatest(latestB, latestC, latestD, latestE))((a, tail) => f(a, tail._1, tail._2, tail._3, tail._4))
-  def withLatestMap5[SA[_]: Source, SB[_]: Source, A, B, C, D, E, F, R](source: SA[A])(latestB: SB[B], latestC: SB[C], latestD: SB[D], latestE: SB[E], latestF: SB[F])(f: (A, B, C, D, E, F) => R): Observable[R] =
-    withLatestMap(source)(combineLatest(latestB, latestC, latestD, latestE, latestF))((a, tail) => f(a, tail._1, tail._2, tail._3, tail._4, tail._5))
-  def withLatestMap6[SA[_]: Source, SB[_]: Source, A, B, C, D, E, F, G, R](source: SA[A])(latestB: SB[B], latestC: SB[C], latestD: SB[D], latestE: SB[E], latestF: SB[F], latestG: SB[G])(f: (A, B, C, D, E, F, G) => R): Observable[R] =
-    withLatestMap(source)(combineLatest(latestB, latestC, latestD, latestE, latestF, latestG))((a, tail) => f(a, tail._1, tail._2, tail._3, tail._4, tail._5, tail._6))
+  def withLatestMap[SA[_]: Source, SB[_]: Source, A, B, C, R](source: SA[A], latestB: SB[B], latestC: SB[C])(f: (A, B, C) => R): Observable[R] =
+    withLatestMap(source, combineLatest(latestB, latestC))((a, tail) => f(a, tail._1, tail._2))
+  def withLatestMap[SA[_]: Source, SB[_]: Source, A, B, C, D, R](source: SA[A], latestB: SB[B], latestC: SB[C], latestD: SB[D])(f: (A, B, C, D) => R): Observable[R] =
+    withLatestMap(source, combineLatest(latestB, latestC, latestD))((a, tail) => f(a, tail._1, tail._2, tail._3))
+  def withLatestMap[SA[_]: Source, SB[_]: Source, A, B, C, D, E, R](source: SA[A], latestB: SB[B], latestC: SB[C], latestD: SB[D], latestE: SB[E])(f: (A, B, C, D, E) => R): Observable[R] =
+    withLatestMap(source, combineLatest(latestB, latestC, latestD, latestE))((a, tail) => f(a, tail._1, tail._2, tail._3, tail._4))
+  def withLatestMap[SA[_]: Source, SB[_]: Source, A, B, C, D, E, F, R](source: SA[A], latestB: SB[B], latestC: SB[C], latestD: SB[D], latestE: SB[E], latestF: SB[F])(f: (A, B, C, D, E, F) => R): Observable[R] =
+    withLatestMap(source, combineLatest(latestB, latestC, latestD, latestE, latestF))((a, tail) => f(a, tail._1, tail._2, tail._3, tail._4, tail._5))
+  def withLatestMap[SA[_]: Source, SB[_]: Source, A, B, C, D, E, F, G, R](source: SA[A], latestB: SB[B], latestC: SB[C], latestD: SB[D], latestE: SB[E], latestF: SB[F], latestG: SB[G])(f: (A, B, C, D, E, F, G) => R): Observable[R] =
+    withLatestMap(source, combineLatest(latestB, latestC, latestD, latestE, latestF, latestG))((a, tail) => f(a, tail._1, tail._2, tail._3, tail._4, tail._5, tail._6))
 
   def zipWithIndex[S[_]: Source, A, R](source: S[A]): Observable[(A, Int)] = new Observable[(A, Int)] {
     def subscribe[G[_]: Sink](sink: G[_ >: (A, Int)]): Cancelable = {
@@ -823,8 +823,8 @@ object Observable {
     @inline def zipMap[S[_]: Source, B, R](combined: S[B])(f: (A, B) => R): Observable[R] = Observable.zipMap(source, combined)(f)
     @inline def combineLatest[S[_]: Source, B](combined: S[B]): Observable[(A,B)] = Observable.combineLatest(source, combined)
     @inline def combineLatestMap[S[_]: Source, B, R](combined: S[B])(f: (A, B) => R): Observable[R] = Observable.combineLatestMap(source, combined)(f)
-    @inline def withLatest[S[_]: Source, B](latest: S[B]): Observable[(A,B)] = Observable.withLatest(source)(latest)
-    @inline def withLatestMap[S[_]: Source, B, R](latest: S[B])(f: (A, B) => R): Observable[R] = Observable.withLatestMap(source)(latest)(f)
+    @inline def withLatest[S[_]: Source, B](latest: S[B]): Observable[(A,B)] = Observable.withLatest(source, latest)
+    @inline def withLatestMap[S[_]: Source, B, R](latest: S[B])(f: (A, B) => R): Observable[R] = Observable.withLatestMap(source, latest)(f)
     @inline def zipWithIndex: Observable[(A, Int)] = Observable.zipWithIndex(source)
     @inline def debounce(duration: FiniteDuration): Observable[A] = Observable.debounce(source)(duration)
     @inline def debounceMillis(millis: Int): Observable[A] = Observable.debounceMillis(source)(millis)
