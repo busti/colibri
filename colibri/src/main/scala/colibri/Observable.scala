@@ -873,6 +873,7 @@ object Observable {
     @inline def collect[B](f: PartialFunction[A, B]): Observable[B] = Observable.collect(source)(f)
     @inline def filter(f: A => Boolean): Observable[A] = Observable.filter(source)(f)
     @inline def scan[B](seed: B)(f: (B, A) => B): Observable[B] = Observable.scan(source)(seed)(f)
+    @inline def scan0[B](seed: B)(f: (B, A) => B): Observable[B] = Observable.scan0(source)(seed)(f)
     @inline def recover(f: PartialFunction[Throwable, A]): Observable[A] = Observable.recover(source)(f)
     @inline def recoverOption(f: PartialFunction[Throwable, Option[A]]): Observable[A] = Observable.recoverOption(source)(f)
     @inline def publish: Observable.Connectable[A] = Observable.publish(source)
