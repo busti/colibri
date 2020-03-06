@@ -281,6 +281,8 @@ object Observable {
     def subscribe[G[_]: Sink](sink: G[_ >: B]): Cancelable = Source[F].subscribe(source)(Observer.contramapEither(sink)(f))
   }
 
+  def recoverToEither[F[_]: Source, A](source: F[A]): Observable[Either[Throwable, A]] = Observable.map[F, A, Either[Throwable, A]](source)(Right(_)).recover { case err => Left(err) }
+
   def recover[F[_]: Source, A](source: F[A])(f: PartialFunction[Throwable, A]): Observable[A] = recoverOption(source)(f andThen (Some(_)))
 
   def recoverOption[F[_]: Source, A](source: F[A])(f: PartialFunction[Throwable, Option[A]]): Observable[A] = new Observable[A] {
@@ -290,6 +292,24 @@ object Observable {
           case Some(v) => v.foreach(Sink[G].onNext(sink)(_))
           case None => Sink[G].onError(sink)(error)
         }
+      })
+    }
+  }
+
+  def doOnNext[F[_]: Source, A](source: F[A])(f: A => Unit): Observable[A] = new Observable[A] {
+    def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = {
+      Source[F].subscribe(source)(Observer.doOnNext[G, A](sink) { value =>
+        f(value)
+        Sink[G].onNext(sink)(value)
+      })
+    }
+  }
+
+  def doOnError[F[_]: Source, A](source: F[A])(f: Throwable => Unit): Observable[A] = new Observable[A] {
+    def subscribe[G[_]: Sink](sink: G[_ >: A]): Cancelable = {
+      Source[F].subscribe(source)(Observer.doOnError(sink) { error =>
+        f(error)
+        Sink[G].onError(sink)(error)
       })
     }
   }

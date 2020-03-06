@@ -102,6 +102,11 @@ object Observer {
     def onError(error: Throwable): Unit = Sink[G].onError(sink)(error)
   }
 
+  def doOnNext[G[_] : Sink, A](sink: G[_ >: A])(f: A => Unit): Observer[A] = new Observer[A] {
+    def onNext(value: A): Unit = f(value)
+    def onError(error: Throwable): Unit = Sink[G].onError(sink)(error)
+  }
+
   def doOnError[G[_] : Sink, A](sink: G[_ >: A])(f: Throwable => Unit): Observer[A] = new Observer[A] {
     def onNext(value: A): Unit = Sink[G].onNext(sink)(value)
     def onError(error: Throwable): Unit = f(error)
