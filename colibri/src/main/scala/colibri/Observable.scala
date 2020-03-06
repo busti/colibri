@@ -631,11 +631,11 @@ object Observable {
     }
   }
 
-  def mapSource[F[_]: Source, FF[_]: Source, A, B](source: F[A])(transform: F[A] => FF[B]): Observable[B] = new Observable[B] {
+  def transformSource[F[_]: Source, FF[_]: Source, A, B](source: F[A])(transform: F[A] => FF[B]): Observable[B] = new Observable[B] {
     def subscribe[G[_]: Sink](sink: G[_ >: B]): Cancelable = Source[FF].subscribe(transform(source))(sink)
   }
 
-  def mapSink[F[_]: Source, G[_]: Sink, A, B](source: F[A])(transform: Observer[_ >: B] => G[A]): Observable[B] = new Observable[B] {
+  def transformSink[F[_]: Source, G[_]: Sink, A, B](source: F[A])(transform: Observer[_ >: B] => G[A]): Observable[B] = new Observable[B] {
     def subscribe[GGG[_]: Sink](sink: GGG[_ >: B]): Cancelable = Source[F].subscribe(source)(transform(Observer.lift(sink)))
   }
 
@@ -643,9 +643,9 @@ object Observable {
   @inline def replay[F[_]: Source, A](source: F[A]): Observable.MaybeValue[A] = multicastMaybeValue(source)(Subject.replay[A])
   @inline def behavior[F[_]: Source, A](source: F[A])(value: A): Observable.Value[A] = multicastValue(source)(Subject.behavior[A](value))
 
-  @inline def publishSelector[F[_]: Source, A, B](source: F[A])(f: Observable[A] => Observable[B]): Observable[B] = mapSource(source)(s => f(publish(s)))
-  @inline def replaySelector[F[_]: Source, A, B](source: F[A])(f: Observable.MaybeValue[A] => Observable[B]): Observable[B] = mapSource(source)(s => f(replay(s)))
-  @inline def behaviorSelector[F[_]: Source, A, B](source: F[A])(value: A)(f: Observable.Value[A] => Observable[B]): Observable[B] = mapSource(source)(s => f(behavior(s)(value)))
+  @inline def publishSelector[F[_]: Source, A, B](source: F[A])(f: Observable[A] => Observable[B]): Observable[B] = transformSource(source)(s => f(publish(s)))
+  @inline def replaySelector[F[_]: Source, A, B](source: F[A])(f: Observable.MaybeValue[A] => Observable[B]): Observable[B] = transformSource(source)(s => f(replay(s)))
+  @inline def behaviorSelector[F[_]: Source, A, B](source: F[A])(value: A)(f: Observable.Value[A] => Observable[B]): Observable[B] = transformSource(source)(s => f(behavior(s)(value)))
 
   def multicast[F[_]: Source, A, S[_] : Source : Sink](source: F[A])(pipe: S[A]): Observable[A] = new Observable[A] {
     private val refCount: Cancelable.RefCount = Cancelable.refCount(() => Source[F].subscribe(source)(pipe))
@@ -855,8 +855,8 @@ object Observable {
     @inline def publishSelector[B](f: Observable[A] => Observable[B]): Observable[B] = Observable.publishSelector(source)(f)
     @inline def replaySelector[B](f: Observable.MaybeValue[A] => Observable[B]): Observable[B] = Observable.replaySelector(source)(f)
     @inline def behaviorSelector[B](value: A)(f: Observable.Value[A] => Observable[B]): Observable[B] = Observable.behaviorSelector(source)(value)(f)
-    @inline def mapSource[S[_]: Source, B](transform: Observable[A] => S[B]): Observable[B] = Observable.mapSource(source)(transform)
-    @inline def mapSink[G[_]: Sink, B](transform: Observer[_ >: B] => G[A]): Observable[B] = Observable.mapSink[Observable, G, A, B](source)(transform)
+    @inline def transformSource[S[_]: Source, B](transform: Observable[A] => S[B]): Observable[B] = Observable.transformSource(source)(transform)
+    @inline def transformSink[G[_]: Sink, B](transform: Observer[_ >: B] => G[A]): Observable[B] = Observable.transformSink[Observable, G, A, B](source)(transform)
     @inline def prepend(value: A): Observable[A] = Observable.prepend(source)(value)
     @inline def prependSync[F[_] : RunSyncEffect](value: F[A]): Observable[A] = Observable.prependSync(source)(value)
     @inline def prependAsync[F[_] : Effect](value: F[A]): Observable[A] = Observable.prependAsync(source)(value)

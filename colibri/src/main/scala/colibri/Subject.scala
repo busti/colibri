@@ -107,8 +107,8 @@ object Subject {
   }
 
   @inline implicit class ProOperations[I,O](val handler: ProSubject[I,O]) extends AnyVal {
-    @inline def transformSource[S[_] : Source, O2](g: Observable[O] => S[O2]): ProSubject[I, O2] = from[Observer, S, I, O2](handler, g(handler))
-    @inline def transformSink[G[_] : Sink, I2](f: Observer[I] => G[I2]): ProSubject[I2, O] = from[G, Observable, I2, O](f(handler), handler)
+    @inline def transformSubjectSource[S[_] : Source, O2](g: Observable[O] => S[O2]): ProSubject[I, O2] = from[Observer, S, I, O2](handler, g(handler))
+    @inline def transformSubjectSink[G[_] : Sink, I2](f: Observer[I] => G[I2]): ProSubject[I2, O] = from[G, Observable, I2, O](f(handler), handler)
     @inline def transformSubject[G[_] : Sink, S[_] : Source, I2, O2](f: Observer[I] => G[I2])(g: Observable[O] => S[O2]): ProSubject[I2, O2] = from(f(handler), g(handler))
   }
 }
