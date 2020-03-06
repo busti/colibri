@@ -1,6 +1,6 @@
 package colibri.ext.monix
 
-import _root_.monix.execution.{Ack, Scheduler, Cancelable}
+import _root_.monix.execution.{Ack, Cancelable}
 import _root_.monix.reactive.{Observable, Observer}
 import _root_.monix.reactive.observers.Subscriber
 import _root_.monix.reactive.subjects.{ReplaySubject, BehaviorSubject, PublishSubject}
