@@ -882,5 +882,29 @@ object Observable {
     @inline def stopImmediatePropagation: Synchronous[EV] = withOperator(_.stopImmediatePropagation)
   }
 
+  @inline implicit class SubjectValueOperations[A](val handler: Subject.Value[A]) extends AnyVal {
+    def lens[B](read: A => B)(write: (A, B) => A): Subject.Value[B] = new Observer[B] with Observable.Value[B] {
+      @inline def now() = read(handler.now())
+      @inline def onNext(value: B): Unit = handler.onNext(write(handler.now(), value))
+      @inline def onError(error: Throwable): Unit = handler.onError(error)
+      @inline def subscribe[G[_] : Sink](sink: G[_ >: B]): Cancelable = handler.map(read).subscribe(sink)
+    }
+  }
+
+  @inline implicit class SubjectMaybeValueOperations[A](val handler: Subject.MaybeValue[A]) extends AnyVal {
+    def lens[B](seed: => A)(read: A => B)(write: (A, B) => A): Subject.MaybeValue[B] = new Observer[B] with Observable.MaybeValue[B] {
+      @inline def now() = handler.now().map(read)
+      @inline def onNext(value: B): Unit = handler.onNext(write(handler.now().getOrElse(seed), value))
+      @inline def onError(error: Throwable): Unit = handler.onError(error)
+      @inline def subscribe[G[_] : Sink](sink: G[_ >: B]): Cancelable = handler.map(read).subscribe(sink)
+    }
+  }
+
+  @inline implicit class SubjectOperations[I,O](val handler: ProSubject[I,O]) extends AnyVal {
+    @inline def transformSubjectSource[S[_] : Source, O2](g: Observable[O] => S[O2]): ProSubject[I, O2] = ProSubject.from[Observer, S, I, O2](handler, g(handler))
+    @inline def transformSubjectSink[G[_] : Sink, I2](f: Observer[I] => G[I2]): ProSubject[I2, O] = ProSubject.from[G, Observable, I2, O](f(handler), handler)
+    @inline def transformSubject[G[_] : Sink, S[_] : Source, I2, O2](f: Observer[I] => G[I2])(g: Observable[O] => S[O2]): ProSubject[I2, O2] = ProSubject.from(f(handler), g(handler))
+  }
+
   private def recovered[T](action: => Unit, onError: Throwable => Unit) = try action catch { case NonFatal(t) => onError(t) }
 }
