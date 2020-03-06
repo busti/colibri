@@ -5,6 +5,7 @@ import _root_.monix.execution.{Ack, Scheduler, Cancelable}
 import _root_.monix.execution.cancelables.CompositeCancelable
 import _root_.monix.reactive.{OverflowStrategy, Observable, Observer}
 import _root_.monix.reactive.subjects.Var
+import cats.Monoid
 
 import colibri.effect._
 import colibri.helpers._
